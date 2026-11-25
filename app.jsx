@@ -1,330 +1,320 @@
-﻿const { useState, useEffect, useRef, useCallback, useMemo } = React;
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { runRealOCR, parseDocumentText, matchSchemesFromProfile } from './src/ocr.js';
+import { SCHEMES_DB } from './src/data/schemes.js';
 
 // ═══════════════════════════════════════════════════════════════
-// LUCIDE ICON COMPONENT (SVG inline since we don't have lucide-react)
+// CLEAN VECTOR ICON SYSTEM (Zero Emojis)
 // ═══════════════════════════════════════════════════════════════
 const ICONS = {
-    Camera: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>,
-    Mic: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>,
-    FileText: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>,
-    CheckCircle2: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>,
-    ShieldCheck: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>,
-    ArrowRight: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>,
-    RefreshCw: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
-    AlertCircle: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>,
-    Award: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526"/><circle cx="12" cy="8" r="6"/></svg>,
-    Landmark: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>,
-    TrendingUp: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>,
-    ChevronDown: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="m6 9 6 6 6-6"/></svg>,
-    ChevronUp: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="m18 15-6-6-6 6"/></svg>,
-    Share2: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>,
-    ExternalLink: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>,
-    X: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
-    Home: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>,
-    ArrowLeft: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
-    Lock: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
-    Edit3: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>,
-    Users: (p) => <svg xmlns="http://www.w3.org/2000/svg" width={p.size||24} height={p.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+    Camera: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||22} height={p.size||22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+            <circle cx="12" cy="13" r="3"/>
+        </svg>
+    ),
+    Mic: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||22} height={p.size||22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" x2="12" y1="19" y2="22"/>
+        </svg>
+    ),
+    Volume2: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||18} height={p.size||18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+        </svg>
+    ),
+    Lock: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||15} height={p.size||15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+    ),
+    ArrowRight: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||18} height={p.size||18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+        </svg>
+    ),
+    ArrowLeft: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||18} height={p.size||18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>
+        </svg>
+    ),
+    Check: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||14} height={p.size||14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <polyline points="20 6 9 17 4 12"/>
+        </svg>
+    ),
+    CheckCircle: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||20} height={p.size||20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+        </svg>
+    ),
+    User: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||18} height={p.size||18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+    ),
+    MapPin: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||18} height={p.size||18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
+        </svg>
+    ),
+    Clipboard: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||18} height={p.size||18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+        </svg>
+    ),
+    Wheat: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||20} height={p.size||20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.4 1.7-4.6-2.7.1-4.2.9-4.9 2z"/>
+        </svg>
+    ),
+    UserHeart: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||20} height={p.size||20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <circle cx="10" cy="8" r="5"/><path d="M2 21a8 8 0 0 1 13.292-6"/><path d="M19 14c1.49-1.46 3-1.04 3 .55 0 1.25-1.55 2.45-3 3.45-1.45-1-3-2.2-3-3.45 0-1.59 1.51-2.01 3-.55z"/>
+        </svg>
+    ),
+    GraduationCap: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||20} height={p.size||20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>
+        </svg>
+    ),
+    Fence: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||20} height={p.size||20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M4 3 2 5v15c0 .6.4 1 1 1h2c.6 0 1-.4 1-1V5L4 3z"/><path d="M12 3l-2 2v15c0 .6.4 1 1 1h2c.6 0 1-.4 1-1V5l-2-2z"/><path d="M20 3l-2 2v15c0 .6.4 1 1 1h2c.6 0 1-.4 1-1V5l-2-2z"/><path d="M2 8h20"/><path d="M2 16h20"/>
+        </svg>
+    ),
+    Building: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||20} height={p.size||20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+    ),
+    Family: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||20} height={p.size||20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+    ),
+    HandHeart: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||20} height={p.size||20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M19 14c1.49-1.46 3-1.04 3 .55 0 1.25-1.55 2.45-3 3.45-1.45-1-3-2.2-3-3.45 0-1.59 1.51-2.01 3-.55z"/><path d="M12 5 9.04 7.96a2.17 2.17 0 0 0 0 3.08c.85.85 2.23.85 3.08 0l1.92-1.92"/><path d="M2 13.5V17a3 3 0 0 0 3 3h4.5a3 3 0 0 0 2.12-.88l5.88-5.88a2.17 2.17 0 0 0-3.07-3.08l-3.9 3.9"/>
+        </svg>
+    ),
+    Hospital: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||20} height={p.size||20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8"/><path d="M12 8v8"/>
+        </svg>
+    ),
+    Flame: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||20} height={p.size||20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+        </svg>
+    ),
+    ExternalLink: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||16} height={p.size||16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+        </svg>
+    ),
+    Share2: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||16} height={p.size||16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/>
+        </svg>
+    ),
+    X: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||16} height={p.size||16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+        </svg>
+    ),
+    Edit3: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||15} height={p.size||15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>
+        </svg>
+    ),
+    Home: (p) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={p.size||16} height={p.size||16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={p.className}>
+            <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        </svg>
+    ),
 };
 
-
 // ═══════════════════════════════════════════════════════════════
-// i18n STRINGS
+// SIMPLE, LOW-LITERACY FRIENDLY COPY
 // ═══════════════════════════════════════════════════════════════
 const STRINGS = {
     hi: {
-        logoName: 'योजनासेतु',
-        tagline: 'Scan. Discover. Empower.',
-        headline: 'एक फोटो, एक मिनट, आपके सारे सरकारी हक',
-        subtext: 'अपना एक दस्तावेज़ (जन आधार, राशन कार्ड, या ज़मीन रिकॉर्ड) स्कैन करें या हिंदी में बात करें — 60 सेकंड में सभी योजनाएं, 100% गोपनीय।',
-        scanBtn: 'दस्तावेज़ स्कैन करें',
-        voiceBtn: 'बोलकर पता करें',
-        tryDemo: 'सैंपल डेमो से आज़माएं',
-        demoA: 'सीमांत किसान (राशन कार्ड — सिरोही)',
-        demoB: 'ग्रामीण महिला प्रधान / विधवा (जन आधार — आबूरोड)',
-        demoC: 'प्रथम पीढ़ी कॉलेज छात्र (12वीं मार्कशीट)',
-        schemesIndexed: 'योजनाएं अनुक्रमित',
-        unclaimedBenefits: 'करोड़ अदावी लाभ',
-        scanning: 'आपका दस्तावेज़ पढ़ रहे हैं...',
-        scanStep1: 'क्लाइंट-साइड इमेज बाइनराइज़ेशन और नॉइज़ रिडक्शन...',
-        scanStep2: 'WebAssembly OCR से डेमोग्राफ़िक मार्कर निकाल रहे हैं...',
-        scanStep3: 'राजस्थान 4,000+ गज़ट में डिटर्मिनिस्टिक रूल मैचिंग...',
-        privacyBadge: '🔒 100% ब्राउज़र सैंडबॉक्स में चला। कोई ID सर्वर पर नहीं गया।',
-        profileTitle: 'निकाली गई जानकारी — सत्यापित करें',
-        profileSubtext: 'आपके दस्तावेज़ से ऑटो-पार्स की गई जानकारी',
-        editBtn: 'बदलें / सुधारें',
-        saveBtn: 'बदलाव सहेजें',
-        unlockBtn: 'मेरे हक खोलें',
-        schemesFound: 'योजनाएं मिलीं',
-        resultsTitle: 'हक डैशबोर्ड',
-        totalEntitlement: 'कुल वार्षिक अनुमानित लाभ',
-        perYear: '/ वर्ष',
-        missingLine: 'आप ₹{amount}/माह खो रहे हैं क्योंकि ये फॉर्म कभी जमा नहीं किए गए।',
-        benefit: 'लाभ राशि',
-        whyQualify: 'आप क्यों पात्र हैं',
-        docsNeeded: 'ज़रूरी दस्तावेज़',
-        applyDigilocker: 'DigiLocker / SSO से आवेदन',
-        shareWhatsApp: 'WhatsApp पर भेजें',
-        badges: { dbt: 'DBT', state: 'राज्य प्राथमिकता', central: 'केंद्रीय योजना', health: 'स्वास्थ्य बीमा', onetime: 'एक-बार अनुदान' },
-        voiceTitle: 'सेतु साथी',
-        voiceSubtext: 'माइक दबाएं और अपनी जानकारी बताएं — हिंदी/मारवाड़ी में',
-        back: 'वापस',
-        startOver: 'फिर से शुरू करें',
+        appName: 'योजनासेतु',
+        safeBadge: '100% सुरक्षित',
+        back: 'पीछे',
+        stepOf: 'कदम {n} / 3',
+        heroTitleP1: 'अपनी',
+        heroTitleAccent: 'योजनाएं जानें।',
+        heroSubtitle: 'एक तरीका चुनें:',
+        scanTitle: 'फोटो डालें',
+        scanHint: 'राशन या आधार कार्ड',
+        voiceTitle: 'जानकारी भरें',
+        voiceHint: 'कुछ आसान सवाल',
+        trySample: 'उदाहरण से देखें:',
+        demoFarmer: 'किसान',
+        demoWidow: 'महिला / विधवा',
+        demoStudent: 'छात्र',
+        scanHeader: 'कागज़ की फोटो चुनें',
+        scanPrompt: 'यहाँ टैप करके फोटो लें',
+        scanCta: 'फोटो चुनें',
+        scanAnalyze: 'जांच शुरू करें',
+        scanning: 'जांच हो रही है...',
+        scanStep1: 'फोटो पढ़ी जा रही है',
+        scanStep2: 'आपकी जानकारी तैयार हो रही है',
+        scanStep3: 'सरकारी योजनाएं खोजी जा रही हैं',
+        privacyNote: 'आपकी फोटो सिर्फ आपके फोन में रहती है।',
+        profileHeader: 'अपनी जानकारी जांचें',
+        profileSub: 'सब सही है तो आगे बढ़ें',
+        edit: 'सुधारें',
+        save: 'सहेजें',
+        seeSchemes: 'मेरी योजनाएं देखें',
         name: 'नाम',
-        age: 'आयु / लिंग',
-        category: 'वर्ग / सामाजिक स्तर',
-        land: 'भूमि / व्यवसाय',
-        maskedId: 'जन आधार (मास्क्ड)',
-        location: 'स्थान',
-        privacyFull: '100% क्लाइंट-साइड प्राइवेसी / कोई ID सर्वर पर स्टोर नहीं',
-        preChecked: '(प्री-चेक्ड — आपकी प्रोफ़ाइल से)',
-        digilockerModal: 'प्रोडक्शन में DigiLocker SSO से जुड़ेगा',
-        showResults: 'डैशबोर्ड पर जाएं',
+        age: 'उम्र (साल में)',
+        location: 'गाँव / शहर',
+        category: 'वर्ग',
+        work: 'काम / ज़मीन',
+        totalBenefit: 'आपको मिल सकते हैं',
+        perYear: '/ साल',
+        schemesFound: 'योजनाएं मिलीं',
+        filterEducation: 'शिक्षा व युवा',
+        filterCash: 'नकद व रोज़गार',
+        filterHealth: 'स्वास्थ्य व बीमा',
+        filterEssentials: 'आवास व अन्य',
+        viewMore: 'और योजनाएं देखें',
+        showingOf: 'दिखाई जा रही हैं:',
+        applyBtn: 'आवेदन करें',
+        docsNeeded: 'ये 3 कागज़ लगेंगे:',
+        openPortal: 'सरकारी वेबसाइट खोलें',
+        shareWhatsApp: 'किसी और को WhatsApp पर जानकारी भेजें',
+        startNew: 'नई जांच शुरू करें',
+        listenBtn: 'सुनें',
+        tapMic: 'बोलने के लिए माइक दबाएं',
+        orTapAnswer: 'या नीचे सही विकल्प चुनें:',
+        voiceReady: 'आपकी जानकारी मिल गई!',
     },
     en: {
-        logoName: 'YojanaSetu',
-        tagline: 'Scan. Discover. Empower.',
-        headline: 'One Photo. 60 Seconds. All Your Entitlements.',
-        subtext: 'Scan one document (Jan Aadhaar, Ration Card, or Land Record) or speak in Hindi — discover all schemes in 60 seconds, 100% client-side privacy.',
-        scanBtn: 'Scan Your Document',
-        voiceBtn: 'Speak with Setu Saathi',
-        tryDemo: 'Try with Sample Documents',
-        demoA: 'Smallholder Farmer (Ration Card — Sirohi)',
-        demoB: 'Rural Female Head / Widow (Jan Aadhaar — Abu Road)',
-        demoC: 'First-Gen College Student (12th Marksheet)',
-        schemesIndexed: 'Schemes Indexed',
-        unclaimedBenefits: 'Cr Unclaimed Benefits',
-        scanning: 'Reading your document...',
-        scanStep1: 'Client-side image binarization & noise reduction...',
-        scanStep2: 'Extracting demographic markers via WebAssembly OCR...',
-        scanStep3: 'Deterministic rule matching across 4,000+ Rajasthan gazettes...',
-        privacyBadge: '🔒 Executed 100% in Browser Sandbox. No ID transmitted to server.',
-        profileTitle: 'Extracted Profile — Verify',
-        profileSubtext: 'Auto-parsed from your scanned document',
-        editBtn: 'Edit / Correct Details',
-        saveBtn: 'Save Changes',
-        unlockBtn: 'Unlock My Entitlements',
-        schemesFound: 'Schemes Found',
-        resultsTitle: 'Haq Dashboard',
-        totalEntitlement: 'Total Annual Entitlement Identified',
-        perYear: '/ year',
-        missingLine: 'You are currently missing ₹{amount}/month because these forms were never submitted.',
-        benefit: 'Benefit Amount',
-        whyQualify: 'Why you qualify',
-        docsNeeded: 'Required Documents',
-        applyDigilocker: 'Apply via DigiLocker / SSO',
-        shareWhatsApp: 'Share via WhatsApp',
-        badges: { dbt: 'DBT', state: 'State Priority', central: 'Central Scheme', health: 'Health Cover', onetime: 'One-Time Grant' },
-        voiceTitle: 'Setu Saathi',
-        voiceSubtext: 'Press the mic and share your details — in Hindi or Marwari',
+        appName: 'YojanaSetu',
+        safeBadge: '100% Private',
         back: 'Back',
-        startOver: 'Start Over',
+        stepOf: 'Step {n} of 3',
+        heroTitleP1: 'Find your',
+        heroTitleAccent: 'schemes.',
+        heroSubtitle: 'Choose one option:',
+        scanTitle: 'Upload Photo',
+        scanHint: 'Ration or Aadhaar card',
+        voiceTitle: 'Enter Info',
+        voiceHint: 'A few simple questions',
+        trySample: 'Try a sample:',
+        demoFarmer: 'Farmer',
+        demoWidow: 'Widow / Woman',
+        demoStudent: 'Student',
+        scanHeader: 'Take a Photo of Your Card',
+        scanPrompt: 'Tap here to take or choose photo',
+        scanCta: 'Choose Photo',
+        scanAnalyze: 'Check My Schemes',
+        scanning: 'Checking your document...',
+        scanStep1: 'Reading photo on your phone',
+        scanStep2: 'Preparing your profile',
+        scanStep3: 'Finding matching schemes',
+        privacyNote: 'Your photo never leaves your phone.',
+        profileHeader: 'Check Your Details',
+        profileSub: 'Confirm if everything looks right',
+        edit: 'Edit',
+        save: 'Save',
+        seeSchemes: 'See My Schemes',
         name: 'Name',
-        age: 'Age / Gender',
-        category: 'Category / Social Tier',
-        land: 'Landholding / Profession',
-        maskedId: 'Jan Aadhaar (Masked)',
-        location: 'Location',
-        privacyFull: '100% Client-Side Privacy / Zero ID Server Storage',
-        preChecked: '(Pre-checked from your profile)',
-        digilockerModal: 'Connects to DigiLocker SSO in production',
-        showResults: 'Go to Dashboard',
+        age: 'Age (Years)',
+        location: 'Village / City',
+        category: 'Category',
+        work: 'Work / Land',
+        totalBenefit: 'Total Annual Benefit',
+        perYear: '/ year',
+        schemesFound: 'Schemes Found',
+        filterEducation: 'Education & Youth',
+        filterCash: 'Cash & Jobs',
+        filterHealth: 'Health & Care',
+        filterEssentials: 'Housing & Other',
+        viewMore: 'View More Schemes',
+        showingOf: 'Showing:',
+        applyBtn: 'How to Apply',
+        docsNeeded: 'Documents you will need:',
+        openPortal: 'Open Official Website',
+        shareWhatsApp: 'Share Scheme Info on WhatsApp',
+        startNew: 'Start New Check',
+        listenBtn: 'Listen',
+        tapMic: 'Tap mic to speak',
+        orTapAnswer: 'Or tap an answer below:',
+        voiceReady: 'All done! Your schemes are ready.',
     }
 };
 
-
 // ═══════════════════════════════════════════════════════════════
-// DEMO PERSONA PROFILES
+// PERSONA PROFILES & SCHEMES DATA
 // ═══════════════════════════════════════════════════════════════
 const PERSONAS = {
     farmer: {
         name: { hi: 'रामलाल मीणा', en: 'Ramlal Meena' },
-        ageGender: { hi: '46 / पुरुष', en: '46 / Male' },
-        category: { hi: 'BPL / जनजाति / ग्रामीण (आबूरोड, सिरोही)', en: 'BPL / Tribal / Rural (Abu Road, Sirohi)' },
-        landOccupation: { hi: '1.4 हेक्टेयर / सीमांत किसान', en: '1.4 Hectares / Smallholder Farmer' },
-        maskedId: 'XXXX-XXXX-8912',
+        age: '46',
         location: { hi: 'आबूरोड, सिरोही, राजस्थान', en: 'Abu Road, Sirohi, Rajasthan' },
-        schemeIds: ['pmkisan', 'palanhar', 'tarbandi', 'ayushman', 'pmawas', 'scholarship'],
+        category: { hi: 'BPL / जनजाति / ग्रामीण', en: 'BPL / Tribal / Rural' },
+        work: { hi: '1.4 हेक्टेयर / सीमांत किसान', en: '1.4 Hectares / Small Farmer' },
+        schemeIds: ['pmkisan', 'tarbandi', 'pmfby', 'kcc', 'pmkusum', 'pmawas', 'ayushman', 'pmsym'],
     },
     widow: {
         name: { hi: 'सुशीला देवी', en: 'Sushila Devi' },
-        ageGender: { hi: '38 / महिला', en: '38 / Female' },
-        category: { hi: 'BPL / OBC / ग्रामीण विधवा (आबूरोड)', en: 'BPL / OBC / Rural Widow (Abu Road)' },
-        landOccupation: { hi: 'भूमिहीन / दैनिक मज़दूर', en: 'Landless / Daily Wage Labour' },
-        maskedId: 'XXXX-XXXX-4501',
+        age: '38',
         location: { hi: 'आबूरोड, सिरोही, राजस्थान', en: 'Abu Road, Sirohi, Rajasthan' },
-        schemeIds: ['palanhar', 'ayushman', 'pmawas', 'widow_pension', 'ujjwala', 'scholarship'],
+        category: { hi: 'BPL / OBC / विधवा महिला', en: 'BPL / OBC / Rural Widow' },
+        work: { hi: 'दैनिक मज़दूर / भूमिहीन', en: 'Daily Wage Labour / Landless' },
+        schemeIds: ['widow_pension', 'palanhar', 'ujjwala', 'pmawas', 'ayushman', 'pmmvy', 'pmsym', 'mudra'],
     },
     student: {
         name: { hi: 'प्रिया कुमारी', en: 'Priya Kumari' },
-        ageGender: { hi: '18 / महिला', en: '18 / Female' },
-        category: { hi: 'BPL / SC / ग्रामीण (जयपुर)', en: 'BPL / SC / Rural (Jaipur)' },
-        landOccupation: { hi: '— / 12वीं कक्षा (प्रथम पीढ़ी)', en: '— / 12th Grade (First Generation)' },
-        maskedId: 'XXXX-XXXX-7723',
+        age: '19',
         location: { hi: 'जयपुर ग्रामीण, राजस्थान', en: 'Jaipur Rural, Rajasthan' },
-        schemeIds: ['scholarship', 'ayushman', 'pmawas', 'palanhar'],
+        category: { hi: 'BPL / SC / छात्रा', en: 'BPL / SC / Student' },
+        work: { hi: '12वीं कक्षा / कॉलेज प्रवेश', en: '12th Pass / College Entry' },
+        schemeIds: ['nsp', 'scholarship', 'pmkvy', 'palanhar', 'ayushman', 'sukanya'],
     },
 };
 
-
-// ═══════════════════════════════════════════════════════════════
-// SCHEME DATA FIXTURES (6+ Real Schemes)
-// ═══════════════════════════════════════════════════════════════
-const SCHEMES_DB = {
-    pmkisan: {
-        id: 'pmkisan',
-        nameHi: 'प्रधानमंत्री किसान सम्मान निधि',
-        nameEn: 'PM-Kisan Samman Nidhi',
-        benefitAmountAnnual: 6000,
-        benefitDisplay: { hi: '₹6,000 / वर्ष (3 किस्तों में)', en: '₹6,000/yr (in 3 installments)' },
-        category: 'central',
-        badgeKeys: ['dbt', 'central'],
-        eligibilityCriteria: { hi: 'क्योंकि आप 2 हेक्टेयर से कम भूमि वाले सीमांत किसान हैं', en: 'Small farmer holding < 2 hectares of cultivable land' },
-        requiredDocs: { hi: ['आधार कार्ड', 'खसरा/खतौनी', 'बैंक पासबुक'], en: ['Aadhaar Card', 'Khasra/Khatauni', 'Bank Passbook'] },
-        directApplyUrl: 'https://pmkisan.gov.in/',
-        icon: '🌾',
-        color: 'from-emerald-500 to-emerald-700',
-        match: 98,
-    },
-    palanhar: {
-        id: 'palanhar',
-        nameHi: 'राजस्थान पालनहार योजना',
-        nameEn: 'Rajasthan Palanhar Yojana',
-        benefitAmountAnnual: 18000,
-        benefitDisplay: { hi: '₹18,000 / वर्ष (₹1,500/माह)', en: '₹18,000/yr (₹1,500/month)' },
-        category: 'state',
-        badgeKeys: ['state'],
-        eligibilityCriteria: { hi: 'ग्रामीण वर्ग के आश्रित बच्चों के लिए पात्र', en: 'Eligible dependent children in rural category' },
-        requiredDocs: { hi: ['जन आधार कार्ड', 'जाति प्रमाण पत्र', 'विद्यालय प्रमाण पत्र', 'बैंक खाता'], en: ['Jan Aadhaar Card', 'Caste Certificate', 'School Certificate', 'Bank Account'] },
-        directApplyUrl: 'https://sje.rajasthan.gov.in/schemes/Palanhar.html',
-        icon: '👨‍👧‍👦',
-        color: 'from-pink-500 to-pink-700',
-        match: 92,
-    },
-    tarbandi: {
-        id: 'tarbandi',
-        nameHi: 'राजस्थान तारबंदी सब्सिडी योजना',
-        nameEn: 'Rajasthan Tarbandi Subsidy',
-        benefitAmountAnnual: 48000,
-        benefitDisplay: { hi: '₹48,000 तक (एक-बार अनुदान)', en: 'Up to ₹48,000 (One-time grant)' },
-        category: 'state',
-        badgeKeys: ['state', 'onetime'],
-        eligibilityCriteria: { hi: 'सीमांत कृषकों के लिए फेंसिंग सहायता — 1.5 हेक्टेयर से कम भूमि', en: 'Fencing assistance for marginal cultivators with < 1.5 hectares' },
-        requiredDocs: { hi: ['खसरा/खतौनी', 'आधार कार्ड', 'बैंक पासबुक', 'भूमि का नक्शा'], en: ['Khasra/Khatauni', 'Aadhaar Card', 'Bank Passbook', 'Land Map'] },
-        directApplyUrl: 'https://rajkisan.rajasthan.gov.in/',
-        icon: '🏗️',
-        color: 'from-amber-500 to-amber-700',
-        match: 88,
-    },
-    ayushman: {
-        id: 'ayushman',
-        nameHi: 'आयुष्मान भारत / मुख्यमंत्री आयुष्मान आरोग्य',
-        nameEn: 'Ayushman Bharat / Mukhyamantri Ayushman Arogya',
-        benefitAmountAnnual: 0,
-        benefitDisplay: { hi: '₹25 लाख स्वास्थ्य कवर / परिवार / वर्ष', en: '₹25 Lakh Health Coverage / family / year' },
-        category: 'central',
-        badgeKeys: ['central', 'health'],
-        eligibilityCriteria: { hi: 'NFSA राशन कार्ड धारक / BPL परिवार', en: 'Enrolled NFSA ration card holder / BPL family' },
-        requiredDocs: { hi: ['राशन कार्ड', 'आधार कार्ड', 'जन आधार कार्ड'], en: ['Ration Card', 'Aadhaar Card', 'Jan Aadhaar Card'] },
-        directApplyUrl: 'https://pmjay.gov.in/',
-        icon: '🏥',
-        color: 'from-blue-500 to-blue-700',
-        match: 95,
-    },
-    pmawas: {
-        id: 'pmawas',
-        nameHi: 'प्रधानमंत्री आवास योजना (ग्रामीण)',
-        nameEn: 'PM Awas Yojana (Gramin)',
-        benefitAmountAnnual: 130000,
-        benefitDisplay: { hi: '₹1,30,000 (मैदानी) / ₹1,50,000 (पहाड़ी)', en: '₹1,30,000 (plains) / ₹1,50,000 (hilly)' },
-        category: 'central',
-        badgeKeys: ['central', 'dbt', 'onetime'],
-        eligibilityCriteria: { hi: 'ग्रामीण BPL परिवार — पक्का मकान नहीं है', en: 'Rural BPL family without a pucca house' },
-        requiredDocs: { hi: ['आधार कार्ड', 'BPL सूची', 'भूमि दस्तावेज़', 'फोटो', 'बैंक पासबुक'], en: ['Aadhaar Card', 'BPL List', 'Land Documents', 'Photo', 'Bank Passbook'] },
-        directApplyUrl: 'https://pmayg.nic.in/',
-        icon: '🏠',
-        color: 'from-orange-500 to-orange-700',
-        match: 90,
-    },
-    scholarship: {
-        id: 'scholarship',
-        nameHi: 'मुख्यमंत्री उच्च शिक्षा छात्रवृत्ति योजना',
-        nameEn: 'CM Higher Education Scholarship (Rajasthan)',
-        benefitAmountAnnual: 5000,
-        benefitDisplay: { hi: '₹5,000 / वर्ष (10 माह)', en: '₹5,000/yr (10 months)' },
-        category: 'state',
-        badgeKeys: ['state', 'dbt'],
-        eligibilityCriteria: { hi: 'राजस्थान बोर्ड 12वीं में न्यूनतम 60% अंक, परिवार आय ₹2.5 लाख से कम', en: 'Min 60% in Rajasthan Board 12th, family income < ₹2.5 lakh' },
-        requiredDocs: { hi: ['12वीं मार्कशीट', 'जन आधार कार्ड', 'आय प्रमाण पत्र', 'बैंक खाता', 'फीस रसीद'], en: ['12th Marksheet', 'Jan Aadhaar Card', 'Income Certificate', 'Bank Account', 'Fee Receipt'] },
-        directApplyUrl: 'https://hte.rajasthan.gov.in/',
-        icon: '🎓',
-        color: 'from-violet-500 to-violet-700',
-        match: 85,
-    },
-    widow_pension: {
-        id: 'widow_pension',
-        nameHi: 'राजस्थान विधवा पेंशन योजना',
-        nameEn: 'Rajasthan Widow Pension Scheme',
-        benefitAmountAnnual: 18000,
-        benefitDisplay: { hi: '₹1,500 / माह', en: '₹1,500/month' },
-        category: 'state',
-        badgeKeys: ['state', 'dbt'],
-        eligibilityCriteria: { hi: '18+ आयु विधवा महिला, परिवार आय ₹48,000 से कम', en: 'Widow aged 18+, family income < ₹48,000' },
-        requiredDocs: { hi: ['पति का मृत्यु प्रमाण पत्र', 'आधार कार्ड', 'जन आधार', 'बैंक पासबुक', 'आय प्रमाण पत्र'], en: ['Husband Death Certificate', 'Aadhaar Card', 'Jan Aadhaar', 'Bank Passbook', 'Income Certificate'] },
-        directApplyUrl: 'https://ssp.rajasthan.gov.in/',
-        icon: '🤲',
-        color: 'from-rose-500 to-rose-700',
-        match: 96,
-    },
-    ujjwala: {
-        id: 'ujjwala',
-        nameHi: 'प्रधानमंत्री उज्ज्वला योजना 2.0',
-        nameEn: 'PM Ujjwala Yojana 2.0',
-        benefitAmountAnnual: 0,
-        benefitDisplay: { hi: 'मुफ्त LPG कनेक्शन + पहली रीफिल', en: 'Free LPG Connection + First Refill' },
-        category: 'central',
-        badgeKeys: ['central', 'onetime'],
-        eligibilityCriteria: { hi: 'BPL परिवार की महिला प्रमुख — LPG कनेक्शन नहीं है', en: 'Female head of BPL family — no existing LPG connection' },
-        requiredDocs: { hi: ['आधार कार्ड', 'BPL राशन कार्ड', 'बैंक पासबुक', 'पासपोर्ट फोटो'], en: ['Aadhaar Card', 'BPL Ration Card', 'Bank Passbook', 'Passport Photo'] },
-        directApplyUrl: 'https://www.pmujjwalayojana.com/',
-        icon: '🔥',
-        color: 'from-cyan-500 to-cyan-700',
-        match: 93,
-    },
-};
-
-
-// ═══════════════════════════════════════════════════════════════
-// VOICE Q&A SEQUENCE
-// ═══════════════════════════════════════════════════════════════
-const VOICE_QA = [
+const VOICE_STEPS = [
     {
-        q: { hi: 'नमस्ते रामलाल जी! आपकी उम्र कितनी है और आपके पास कितनी ज़मीन है?', en: 'Namaste Ramlal ji! What is your age and how much land do you have?' },
-        a: { hi: 'मेरी उम्र 46 साल है और आबूरोड में 3 बीघा ज़मीन है।', en: 'I am 46 years old and I have 3 bigha land in Abu Road.' },
+        q: { hi: 'आप क्या काम करते हैं?', en: 'What work do you do?' },
+        options: {
+            hi: ['खेती / किसान', 'दैनिक मज़दूरी', 'पढ़ाई / छात्र'],
+            en: ['Farmer / Agriculture', 'Daily Wage Labour', 'Student'],
+        },
+        personaMap: ['farmer', 'widow', 'student'],
     },
     {
-        q: { hi: 'आपके परिवार में कितने सदस्य हैं? और क्या आपके बच्चे स्कूल जाते हैं?', en: 'How many family members do you have? Do your children go to school?' },
-        a: { hi: 'परिवार में 5 सदस्य हैं, दो बच्चे स्कूल जाते हैं।', en: 'We are 5 family members, two children go to school.' },
+        q: { hi: 'क्या आपके पास राशन कार्ड या जन आधार है?', en: 'Do you have a Ration Card or Jan Aadhaar?' },
+        options: {
+            hi: ['हाँ, मेरे पास है', 'नहीं / बनवाना है'],
+            en: ['Yes, I have it', 'No / Need one'],
+        },
     },
     {
-        q: { hi: 'क्या आपके पास राशन कार्ड है? BPL या APL?', en: 'Do you have a ration card? BPL or APL?' },
-        a: { hi: 'हाँ, BPL राशन कार्ड है।', en: 'Yes, I have a BPL ration card.' },
-    },
-    {
-        q: { hi: 'बधाई हो! 🎉 आपकी प्रोफ़ाइल के अनुसार आप पीएम-किसान, तारबंदी योजना, और आयुष्मान भारत के सीधे पात्र हैं। कुल लाभ: ₹54,000+ प्रति वर्ष।', en: 'Congratulations! 🎉 Based on your profile, you directly qualify for PM-Kisan, Tarbandi Yojana, and Ayushman Bharat. Total benefit: ₹54,000+/year.' },
-        a: null,
+        q: { hi: 'क्या घर में कोई बच्चे स्कूल जाते हैं?', en: 'Do any children in your home go to school?' },
+        options: {
+            hi: ['हाँ, जाते हैं', 'नहीं'],
+            en: ['Yes, they do', 'No'],
+        },
     },
 ];
 
-
 // ═══════════════════════════════════════════════════════════════
-// UTILITY: Animated Counter
+// ANIMATED COUNTER HOOK
 // ═══════════════════════════════════════════════════════════════
-function useCountUp(target, duration = 2000, enabled = true) {
+function useCountUp(target, duration = 1200) {
     const [value, setValue] = useState(0);
     useEffect(() => {
-        if (!enabled) return;
-        let start = 0;
         const startTime = Date.now();
         const step = () => {
             const elapsed = Date.now() - startTime;
@@ -334,887 +324,1077 @@ function useCountUp(target, duration = 2000, enabled = true) {
             if (progress < 1) requestAnimationFrame(step);
         };
         requestAnimationFrame(step);
-    }, [target, duration, enabled]);
+    }, [target, duration]);
     return value;
 }
 
-
 // ═══════════════════════════════════════════════════════════════
-// CONFETTI
+// RETRO-EDITORIAL HEADER WITH STEP PROGRESS
 // ═══════════════════════════════════════════════════════════════
-function Confetti({ show }) {
-    if (!show) return null;
-    const colors = ['#FF9933', '#1E3A5F', '#046A38', '#FFD700', '#FF6B6B', '#4ECDC4', '#FFF'];
-    const pieces = useMemo(() => Array.from({ length: 60 }, (_, i) => ({
-        id: i,
-        left: Math.random() * 100,
-        delay: Math.random() * 2.5,
-        duration: 2.5 + Math.random() * 2.5,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        size: 5 + Math.random() * 10,
-        shape: Math.random() > 0.5 ? 'circle' : 'rect',
-    })), []);
-    return (
-        <div className="fixed inset-0 pointer-events-none z-50">
-            {pieces.map(p => (
-                <div key={p.id} className="confetti-piece"
-                    style={{
-                        left: `${p.left}%`,
-                        width: p.shape === 'circle' ? p.size : p.size * 0.6,
-                        height: p.size,
-                        borderRadius: p.shape === 'circle' ? '50%' : '2px',
-                        background: p.color,
-                        animation: `confettiFall ${p.duration}s ease-in ${p.delay}s forwards`,
-                    }} />
-            ))}
-        </div>
-    );
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-// ANIMATED CHECKMARK
-// ═══════════════════════════════════════════════════════════════
-function AnimatedCheckmark() {
-    return (
-        <div className="flex justify-center my-5">
-            <svg width="72" height="72" viewBox="0 0 72 72">
-                <circle cx="36" cy="36" r="32" fill="none" stroke="#15803D" strokeWidth="3"
-                    strokeDasharray="230" style={{ animation: 'checkCircle 0.6s ease forwards' }} />
-                <path d="M22 38 L30 46 L50 24" fill="none" stroke="#15803D" strokeWidth="4"
-                    strokeLinecap="round" strokeLinejoin="round"
-                    strokeDasharray="50" style={{ animation: 'checkDraw 0.4s ease 0.5s forwards', strokeDashoffset: 50 }} />
-            </svg>
-        </div>
-    );
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-// MODAL
-// ═══════════════════════════════════════════════════════════════
-function Modal({ open, onClose, children }) {
-    if (!open) return null;
-    return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-             style={{ animation: 'fadeIn 0.25s ease forwards' }}>
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-            <div className="relative bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 z-10"
-                 style={{ animation: 'slideUp 0.35s cubic-bezier(0.16,1,0.3,1) forwards' }}>
-                <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-navy transition-colors">
-                    <ICONS.X size={20} />
-                </button>
-                {children}
-            </div>
-        </div>
-    );
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-// NAVBAR
-// ═══════════════════════════════════════════════════════════════
-function Navbar({ lang, setLang, showBack, onBack }) {
-    return (
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-xl border-b border-navy/5 shadow-sm">
-            <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-                {/* Left: Back or Logo */}
-                <div className="flex items-center gap-3">
-                    {showBack && (
-                        <button onClick={onBack} className="flex items-center gap-1 text-navy/60 hover:text-saffron transition-colors text-sm font-medium mr-2">
-                            <ICONS.ArrowLeft size={16} />
-                            <span className="hidden sm:inline">{STRINGS[lang].back}</span>
-                        </button>
-                    )}
-                    <div className="flex items-center gap-2">
-                        {/* Ashoka Emblem motif */}
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-navy to-navyLight flex items-center justify-center shadow-md">
-                            <ICONS.Landmark size={14} className="text-white" />
-                        </div>
-                        <div>
-                            <span className="font-extrabold text-navy text-sm tracking-tight">{STRINGS[lang].logoName}</span>
-                            <span className="text-[10px] text-saffron font-semibold tracking-widest ml-1 hidden sm:inline">योजना सेतु</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Center: Partnership badges */}
-                <div className="hidden md:flex items-center gap-2">
-                    <span className="text-[9px] text-navy/30 font-medium bg-navy/5 px-2 py-0.5 rounded-full">iStart Rajasthan</span>
-                    <span className="text-[9px] text-navy/30 font-medium bg-navy/5 px-2 py-0.5 rounded-full">Viksit Bharat</span>
-                </div>
-
-                {/* Right: Language toggle */}
-                <button onClick={() => setLang(l => l === 'hi' ? 'en' : 'hi')}
-                    className="flex items-center gap-1.5 bg-cream border border-navy/8 rounded-full px-3 py-1.5 hover:border-saffron/40 transition-all duration-300 text-xs font-bold">
-                    <span className={`transition-all duration-300 ${lang === 'hi' ? 'text-saffron' : 'text-navy/30'}`}>हि</span>
-                    <div className="w-8 h-4 bg-navy/10 rounded-full relative">
-                        <div className={`absolute top-0.5 w-3 h-3 bg-saffron rounded-full transition-all duration-300 shadow ${lang === 'hi' ? 'left-0.5' : 'left-[18px]'}`} />
-                    </div>
-                    <span className={`transition-all duration-300 ${lang === 'en' ? 'text-navy' : 'text-navy/30'}`}>EN</span>
-                </button>
-            </div>
-        </nav>
-    );
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-// PRIVACY BADGE
-// ═══════════════════════════════════════════════════════════════
-function PrivacyBadge({ lang }) {
-    return (
-        <div className="flex items-center gap-2 bg-forest/5 border border-forest/10 rounded-full px-4 py-2 text-xs text-forest font-medium">
-            <ICONS.ShieldCheck size={14} className="text-forest shrink-0" />
-            <span>{STRINGS[lang].privacyFull}</span>
-        </div>
-    );
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-// FLOATING SETU SAATHI BUTTON
-// ═══════════════════════════════════════════════════════════════
-function FloatingVoiceBtn({ onClick, lang }) {
-    return (
-        <button onClick={onClick}
-            className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-gradient-to-br from-saffron to-saffronDark text-white shadow-xl shadow-saffron/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-transform duration-200 group"
-            title={lang === 'hi' ? 'सेतु साथी से बात करें' : 'Talk to Setu Saathi'}>
-            <ICONS.Mic size={22} />
-            <div className="absolute inset-0 rounded-full border-2 border-saffron/50 pulse-ring" />
-        </button>
-    );
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-// STATE 1: HERO / LANDING
-// ═══════════════════════════════════════════════════════════════
-function LandingScreen({ lang, onScan, onVoice, onDemo }) {
+function Header({ lang, setLang, stepNumber, onBack, onHome }) {
     const t = STRINGS[lang];
-    const schemeCount = useCountUp(4000, 2200);
-    const croreCount = useCountUp(40000, 2500);
+    const isHome = stepNumber === 0;
 
     return (
-        <div className="screen-enter min-h-screen flex flex-col items-center px-4 pt-20 pb-12 relative overflow-hidden">
-            {/* Background decorations */}
-            <div className="absolute top-14 left-0 w-full h-80 bg-gradient-to-b from-navy/[0.03] to-transparent pointer-events-none" />
-            <div className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full bg-saffron/[0.04] blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full bg-navy/[0.04] blur-3xl pointer-events-none" />
+        <header className="sticky top-0 z-40 bg-[#FFFFEB]/95 backdrop-blur-md border-b border-[#E4E4D0]">
+            <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+                {/* Left: Back or Brand */}
+                {!isHome ? (
+                    <button onClick={onBack} className="btn-retro btn-white py-2 px-3.5 text-xs">
+                        <ICONS.ArrowLeft size={15} />
+                        <span>{t.back}</span>
+                    </button>
+                ) : (
+                    <button onClick={onHome} className="flex items-center gap-2.5 text-left group">
+                        <div className="w-8 h-8 rounded-lg bg-[#0041CA] border-2 border-[#1A1A1A] shadow-[2px_2px_0_#1A1A1A] flex items-center justify-center text-white font-extrabold text-sm group-hover:scale-105 transition-transform">
+                            य
+                        </div>
+                        <span className="font-sans font-extrabold text-lg text-[#1A1A1A] tracking-tight">{t.appName}</span>
+                    </button>
+                )}
 
-            {/* Emblem + Branding */}
-            <div className="relative mb-6 mt-4">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-navy to-navyDark flex items-center justify-center shadow-2xl shadow-navy/30 rotate-3 hover:rotate-0 transition-transform duration-500">
-                    <ICONS.Landmark size={32} className="text-white" />
-                </div>
-                <div className="absolute -inset-4 rounded-2xl border-2 border-dashed border-saffron/20 animate-spin" style={{ animationDuration: '25s' }} />
-                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-forest flex items-center justify-center">
-                    <ICONS.CheckCircle2 size={12} className="text-white" />
-                </div>
-            </div>
+                {/* Center: Step Indicator or Safe Pill */}
+                {!isHome ? (
+                    <div className="flex flex-col items-center gap-1.5 min-w-[110px]">
+                        <span className="font-mono text-xs font-bold text-[#4A4A43]">
+                            {t.stepOf.replace('{n}', String(stepNumber))}
+                        </span>
+                        <div className="flex items-center gap-1.5 w-24">
+                            {[1, 2, 3].map(n => (
+                                <div key={n} className={`h-2 flex-1 rounded-full border border-[#1A1A1A] transition-colors ${n <= stepNumber ? 'bg-[#0041CA]' : 'bg-white'}`} />
+                            ))}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="hidden sm:inline-flex items-center gap-1.5 text-xs font-bold text-[#1A1A1A] bg-[#34D399]/30 border border-[#1A1A1A] shadow-[1.5px_1.5px_0_#1A1A1A] px-3 py-1 rounded-full">
+                        <ICONS.Lock size={13} />
+                        <span>{t.safeBadge}</span>
+                    </div>
+                )}
 
-            {/* Headline */}
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-navy text-center leading-tight mb-3 max-w-2xl">
-                {t.headline}
-            </h1>
-            <p className="text-sm sm:text-base text-navy/50 text-center max-w-lg mb-6 leading-relaxed px-2">
-                {t.subtext}
-            </p>
-
-            {/* Value Counter Banner */}
-            <div className="flex flex-wrap items-center justify-center gap-4 mb-8">
-                <div className="flex items-center gap-2 bg-navy/[0.04] rounded-full px-5 py-2.5">
-                    <ICONS.FileText size={16} className="text-saffron" />
-                    <span className="text-lg font-black text-navy" style={{ animation: 'tickerGlow 2s ease infinite' }}>
-                        {schemeCount.toLocaleString()}+
-                    </span>
-                    <span className="text-xs text-navy/50 font-medium">{t.schemesIndexed}</span>
-                </div>
-                <div className="flex items-center gap-2 bg-saffron/[0.06] rounded-full px-5 py-2.5">
-                    <ICONS.TrendingUp size={16} className="text-forest" />
-                    <span className="text-lg font-black text-navy" style={{ animation: 'tickerGlow 2s ease 0.5s infinite' }}>
-                        ₹{croreCount.toLocaleString()}+
-                    </span>
-                    <span className="text-xs text-navy/50 font-medium">{t.unclaimedBenefits}</span>
-                </div>
-            </div>
-
-            {/* Primary Actions */}
-            <div className="flex flex-col gap-3 w-full max-w-sm mb-8">
-                <button onClick={onScan}
-                    className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-saffron to-saffronDark text-white font-bold text-base py-4 px-6 rounded-2xl shadow-xl shadow-saffron/25 hover:shadow-2xl hover:shadow-saffron/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 relative overflow-hidden group">
-                    <ICONS.Camera size={20} />
-                    <span className="relative z-10">{t.scanBtn}</span>
-                    <div className="absolute inset-0 bg-white/10 translate-x-full group-hover:translate-x-0 transition-transform duration-500" />
-                </button>
-                <button onClick={onVoice}
-                    className="w-full flex items-center justify-center gap-3 bg-white border-2 border-navy/10 text-navy font-semibold text-base py-4 px-6 rounded-2xl shadow-lg hover:shadow-xl hover:border-saffron/30 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300">
-                    <ICONS.Mic size={20} className="text-saffron" />
-                    <span>{t.voiceBtn}</span>
+                {/* Right: Language Toggle */}
+                <button onClick={() => setLang(l => l === 'hi' ? 'en' : 'hi')}
+                    className="btn-retro btn-white py-1.5 px-3.5 text-xs shadow-[2px_2px_0_#1A1A1A]">
+                    <span className={lang === 'hi' ? 'text-[#0041CA] font-black' : 'text-[#8C8C80]'}>हिंदी</span>
+                    <span className="text-[#C9C9B8]">/</span>
+                    <span className={lang === 'en' ? 'text-[#0041CA] font-black' : 'text-[#8C8C80]'}>EN</span>
                 </button>
             </div>
+        </header>
+    );
+}
 
-            {/* Quick-Demo Strip */}
-            <div className="w-full max-w-lg">
-                <div className="flex items-center gap-2 mb-3 justify-center">
-                    <div className="h-px w-8 bg-navy/10" />
-                    <span className="text-[11px] font-bold text-navy/30 tracking-wider uppercase">{t.tryDemo}</span>
-                    <div className="h-px w-8 bg-navy/10" />
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2">
-                    {[
-                        { key: 'farmer', label: t.demoA, icon: '🌾' },
-                        { key: 'widow', label: t.demoB, icon: '👩' },
-                        { key: 'student', label: t.demoC, icon: '🎓' },
-                    ].map(d => (
-                        <button key={d.key} onClick={() => onDemo(d.key)}
-                            className="flex-1 flex items-center gap-2 bg-white border border-navy/8 rounded-xl px-3 py-2.5 text-left hover:border-saffron/40 hover:shadow-md transition-all duration-200 group">
-                            <span className="text-lg">{d.icon}</span>
-                            <span className="text-[11px] text-navy/60 font-medium leading-tight group-hover:text-navy transition-colors">{d.label}</span>
-                        </button>
-                    ))}
-                </div>
+// ═══════════════════════════════════════════════════════════════
+// STEP 0: HOME (2 CLEAR CHOICES, RETRO-EDITORIAL STYLE)
+// ═══════════════════════════════════════════════════════════════
+function LandingScreen({ lang, onScan, onVoice }) {
+    const t = STRINGS[lang];
+
+    return (
+        <div className="step-enter min-h-[calc(100vh-64px)] px-4 py-8 sm:py-12 max-w-2xl mx-auto flex flex-col items-center justify-center">
+            {/* Clean Minimal Title */}
+            <div className="text-center mb-8">
+                <h1 className="text-3xl sm:text-5xl font-sans font-extrabold text-[#1A1A1A] tracking-tight leading-[1.15] mb-2">
+                    <span>{t.heroTitleP1}</span>{' '}
+                    <em className="font-serif italic font-normal text-[#0041CA] underline decoration-[#FFA946] decoration-4 underline-offset-4">
+                        {t.heroTitleAccent}
+                    </em>
+                </h1>
+                <p className="text-sm sm:text-base text-[#4A4A43] font-medium font-body">
+                    {t.heroSubtitle}
+                </p>
             </div>
 
-            {/* Privacy Badge */}
-            <div className="mt-8">
-                <PrivacyBadge lang={lang} />
+            {/* 2 Clean Action Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 w-full">
+                {/* Option 1: Upload Photo */}
+                <button type="button" onClick={onScan}
+                    className="group bg-[#0041CA] hover:bg-[#0033A3] text-white border-2 border-[#1A1A1A] shadow-[5px_5px_0_#1A1A1A] hover:shadow-[7px_7px_0_#1A1A1A] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[2px_2px_0_#1A1A1A] rounded-3xl p-6 sm:p-7 text-left transition-all flex flex-col justify-between min-h-[175px]">
+                    <div className="w-14 h-14 rounded-2xl bg-[#FFA946] text-[#1A1A1A] border-2 border-[#1A1A1A] shadow-[2px_2px_0_#1A1A1A] flex items-center justify-center mb-5 group-hover:scale-105 transition-transform">
+                        <ICONS.Camera size={28} />
+                    </div>
+                    <div>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                            <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">{t.scanTitle}</h2>
+                            <ICONS.ArrowRight size={22} className="shrink-0 group-hover:translate-x-1 transition-transform" />
+                        </div>
+                        <p className="text-xs sm:text-sm text-white/85 font-body">
+                            {t.scanHint}
+                        </p>
+                    </div>
+                </button>
+
+                {/* Option 2: Enter Info Manually */}
+                <button type="button" onClick={onVoice}
+                    className="group bg-[#F0D7FF] hover:bg-[#e8c6fc] text-[#1A1A1A] border-2 border-[#1A1A1A] shadow-[5px_5px_0_#1A1A1A] hover:shadow-[7px_7px_0_#1A1A1A] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[2px_2px_0_#1A1A1A] rounded-3xl p-6 sm:p-7 text-left transition-all flex flex-col justify-between min-h-[175px]">
+                    <div className="w-14 h-14 rounded-2xl bg-white text-[#1A1A1A] border-2 border-[#1A1A1A] shadow-[2px_2px_0_#1A1A1A] flex items-center justify-center mb-5 group-hover:scale-105 transition-transform">
+                        <ICONS.Edit3 size={26} className="text-[#0041CA]" />
+                    </div>
+                    <div>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                            <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">{t.voiceTitle}</h2>
+                            <ICONS.ArrowRight size={22} className="shrink-0 group-hover:translate-x-1 transition-transform" />
+                        </div>
+                        <p className="text-xs sm:text-sm text-[#4A4A43] font-body">
+                            {t.voiceHint}
+                        </p>
+                    </div>
+                </button>
             </div>
         </div>
     );
 }
 
-
 // ═══════════════════════════════════════════════════════════════
-// STATE 2: SIMULATED CAMERA SCANNER
+// STEP 1A: DOCUMENT SCANNER
 // ═══════════════════════════════════════════════════════════════
 function ScanScreen({ lang, onDone }) {
     const t = STRINGS[lang];
-    const [step, setStep] = useState(0); // 0=viewfinder, 1=step1, 2=step2, 3=step3
+    const [step, setStep] = useState(0);
+    const [progress, setProgress] = useState(0);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [previewUrl, setPreviewUrl] = useState(null);
+    const [fileError, setFileError] = useState('');
+    const inputRef = useRef(null);
+    const cancelledRef = useRef(false);
 
-    const startScan = () => {
-        setStep(1);
-        setTimeout(() => setStep(2), 900);
-        setTimeout(() => setStep(3), 1800);
-        setTimeout(() => onDone(), 2700);
+    useEffect(() => () => {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+    }, [previewUrl]);
+
+    useEffect(() => {
+        cancelledRef.current = false;
+        return () => {
+            cancelledRef.current = true;
+        };
+    }, []);
+
+    const selectDocument = () => inputRef.current?.click();
+
+    const handleFile = (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            setFileError(lang === 'hi' ? 'कृपया सही फोटो चुनें।' : 'Please choose a valid image.');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            setFileError(lang === 'hi' ? 'फोटो 10 MB से छोटी होनी चाहिए।' : 'Image must be smaller than 10 MB.');
+            return;
+        }
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setFileError('');
+        setSelectedFile(file);
+        setPreviewUrl(URL.createObjectURL(file));
     };
 
-    const stepLabels = [t.scanStep1, t.scanStep2, t.scanStep3];
+    const startScan = async () => {
+        if (!selectedFile) return;
+        setFileError('');
+        setStep(1);
+        setProgress(5);
+        try {
+            const rawText = await runRealOCR(selectedFile, ({ stage, progress: pct }) => {
+                if (cancelledRef.current) return;
+                setStep(stage);
+                setProgress(Math.max(5, pct));
+            });
+            if (cancelledRef.current) return;
+            const parsed = parseDocumentText(rawText, lang);
+            onDone(parsed);
+        } catch {
+            if (cancelledRef.current) return;
+            setStep(0);
+            setProgress(0);
+            setFileError(lang === 'hi' ? 'फोटो पढ़ने में समस्या आई। कृपया साफ फोटो चुनें।' : 'Could not read image. Please try a clearer photo.');
+        }
+    };
+
+    const scanSteps = [t.scanStep1, t.scanStep2, t.scanStep3];
 
     return (
-        <div className="screen-enter min-h-screen flex flex-col items-center justify-center px-4 pt-20 pb-12">
-            {step === 0 ? (
-                <div className="flex flex-col items-center w-full max-w-sm" style={{ animation: 'cardPop 0.5s ease both' }}>
-                    {/* Viewfinder Frame */}
-                    <div onClick={startScan}
-                        className="w-full aspect-[3/4] bg-gradient-to-b from-navy/[0.03] to-navy/[0.06] rounded-3xl border-2 border-dashed border-navy/15 flex flex-col items-center justify-center relative overflow-hidden cursor-pointer group hover:border-saffron/50 transition-all duration-300 mb-6">
-                        {/* Corner marks */}
-                        {[['top-3 left-3', 'border-t-[3px] border-l-[3px] rounded-tl-lg'],
-                          ['top-3 right-3', 'border-t-[3px] border-r-[3px] rounded-tr-lg'],
-                          ['bottom-3 left-3', 'border-b-[3px] border-l-[3px] rounded-bl-lg'],
-                          ['bottom-3 right-3', 'border-b-[3px] border-r-[3px] rounded-br-lg']
-                        ].map(([pos, cls], i) => (
-                            <div key={i} className={`absolute ${pos} w-10 h-10 ${cls} border-saffron`} />
-                        ))}
+        <div className="step-enter min-h-[calc(100vh-64px)] px-4 py-8 max-w-md mx-auto flex flex-col items-center justify-center">
+            <div className="w-full bg-white rounded-3xl border-2 border-[#1A1A1A] shadow-[6px_6px_0_#1A1A1A] p-6 sm:p-8">
+                <h2 className="text-xl font-extrabold text-[#1A1A1A] text-center mb-5">
+                    {step === 0 ? t.scanHeader : t.scanning}
+                </h2>
 
-                        {/* Fake document preview */}
-                        <div className="w-40 h-56 bg-white rounded-xl shadow-lg p-3 mb-4 relative group-hover:scale-105 transition-transform duration-500">
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="w-8 h-8 rounded-lg bg-navy/10" />
-                                <div className="flex-1 space-y-1"><div className="h-2 bg-navy/10 rounded w-full" /><div className="h-2 bg-navy/8 rounded w-3/4" /></div>
-                            </div>
-                            <div className="flex gap-2 mt-3">
-                                <div className="w-12 h-14 bg-navy/8 rounded-lg" />
-                                <div className="flex-1 space-y-1.5"><div className="h-2 bg-navy/8 rounded" /><div className="h-2 bg-navy/6 rounded w-4/5" /><div className="h-2 bg-navy/6 rounded w-3/5" /><div className="h-2 bg-navy/6 rounded w-2/3" /></div>
-                            </div>
-                            <div className="mt-3 space-y-1"><div className="h-2 bg-navy/6 rounded" /><div className="h-2 bg-saffron/15 rounded w-3/4" /></div>
-                        </div>
-
-                        <p className="text-navy/50 text-sm font-medium text-center px-6">
-                            {lang === 'hi' ? 'दस्तावेज़ को फ्रेम में रखें और टैप करें' : 'Place document in frame and tap'}
-                        </p>
-                        <p className="text-navy/30 text-[11px] mt-1.5">
-                            {lang === 'hi' ? 'जन आधार, राशन कार्ड, खसरा...' : 'Jan Aadhaar, Ration Card, Khasra...'}
-                        </p>
-                    </div>
-
-                    <button onClick={startScan}
-                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-navy to-navyLight text-white font-bold py-4 rounded-2xl shadow-xl shadow-navy/20 hover:shadow-2xl transition-all duration-300 text-base">
-                        <ICONS.Camera size={20} />
-                        {lang === 'hi' ? 'फोटो लें / अपलोड करें' : 'Capture / Upload'}
-                    </button>
-                </div>
-            ) : (
-                <div className="flex flex-col items-center" style={{ animation: 'cardPop 0.4s ease both' }}>
-                    {/* Scanning Animation */}
-                    <div className="w-64 sm:w-72 h-80 bg-white rounded-2xl shadow-2xl relative overflow-hidden mb-8 border border-navy/5">
-                        {/* Fake doc skeleton */}
-                        <div className="p-5 space-y-3">
-                            <div className="flex items-center gap-2 mb-1">
-                                <div className="w-7 h-7 rounded bg-navy/10" />
-                                <div className="h-4 bg-navy/10 rounded w-2/3" />
-                            </div>
-                            <div className="h-3 bg-navy/6 rounded w-full" />
-                            <div className="h-3 bg-navy/6 rounded w-5/6" />
-                            <div className="flex gap-3 mt-3">
-                                <div className="w-16 h-20 bg-navy/8 rounded-lg" />
-                                <div className="flex-1 space-y-2">
-                                    <div className="h-2.5 bg-navy/6 rounded" />
-                                    <div className="h-2.5 bg-navy/6 rounded w-3/4" />
-                                    <div className="h-2.5 bg-navy/6 rounded w-1/2" />
-                                    <div className="h-2.5 bg-navy/6 rounded w-2/3" />
-                                </div>
-                            </div>
-                            <div className="h-3 bg-navy/5 rounded w-full mt-3" />
-                            <div className="h-3 bg-navy/5 rounded w-2/3" />
-                            <div className="h-7 bg-saffron/10 rounded mt-3" />
-                        </div>
-                        {/* Laser scan line */}
-                        <div className="scan-laser absolute left-0 w-full h-0.5 shadow-[0_0_15px_3px_rgba(255,153,51,0.6)]" style={{ background: 'linear-gradient(90deg, transparent, #FF9933, transparent)' }} />
-                    </div>
-
-                    {/* Multi-step progress */}
-                    <div className="w-72 sm:w-80">
-                        {stepLabels.map((label, i) => {
-                            const stepNum = i + 1;
-                            const active = step >= stepNum;
-                            const current = step === stepNum;
-                            return (
-                                <div key={i} className={`flex items-start gap-3 mb-3 transition-all duration-500 ${active ? 'opacity-100' : 'opacity-30'}`}>
-                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 transition-all duration-500 ${active ? (current ? 'bg-saffron' : 'bg-forest') : 'bg-navy/20'}`}>
-                                        {active && !current ? (
-                                            <ICONS.CheckCircle2 size={14} className="text-white" />
-                                        ) : current ? (
-                                            <ICONS.RefreshCw size={12} className="text-white animate-spin" />
-                                        ) : (
-                                            <span className="text-[10px] text-white font-bold">{stepNum}</span>
-                                        )}
+                {step === 0 ? (
+                    <>
+                        <input ref={inputRef} onChange={handleFile} accept="image/*" capture="environment" type="file" className="sr-only" />
+                        <button type="button" onClick={selectDocument}
+                            className="w-full h-64 rounded-2xl border-2 border-dashed border-[#1A1A1A] hover:border-[#0041CA] bg-[#FFFFEB] flex flex-col items-center justify-center relative overflow-hidden transition-colors mb-5">
+                            {previewUrl ? (
+                                <img src={previewUrl} alt="Document preview" className="w-full h-full object-contain p-3" />
+                            ) : (
+                                <div className="flex flex-col items-center text-center px-6">
+                                    <div className="w-14 h-14 rounded-2xl bg-[#F0D7FF] border-2 border-[#1A1A1A] shadow-[2px_2px_0_#1A1A1A] text-[#1A1A1A] flex items-center justify-center mb-3">
+                                        <ICONS.Camera size={28} />
                                     </div>
-                                    <p className={`text-xs leading-relaxed font-medium ${current ? 'text-navy' : 'text-navy/50'}`}>{label}</p>
+                                    <span className="text-sm font-bold text-[#1A1A1A]">{t.scanPrompt}</span>
                                 </div>
-                            );
-                        })}
-                    </div>
+                            )}
+                        </button>
 
-                    {/* Progress bar */}
-                    <div className="w-72 sm:w-80 h-1.5 bg-navy/10 rounded-full overflow-hidden mt-2">
-                        <div className="h-full bg-gradient-to-r from-saffron to-forest rounded-full" style={{ animation: 'progressFill 2.5s ease-in-out forwards' }} />
-                    </div>
+                        {fileError && <p className="text-xs text-red-600 text-center font-bold mb-3">{fileError}</p>}
 
-                    {/* Privacy badge inline */}
-                    <div className="mt-6 text-center">
-                        <p className="text-[11px] text-forest font-medium flex items-center gap-1.5 justify-center">
-                            <ICONS.Lock size={12} />
-                            {t.privacyBadge}
-                        </p>
+                        <button onClick={previewUrl ? startScan : selectDocument}
+                            className="btn-retro btn-blue w-full py-3.5 text-sm sm:text-base">
+                            <span>{previewUrl ? t.scanAnalyze : t.scanCta}</span>
+                            <ICONS.ArrowRight size={18} />
+                        </button>
+                    </>
+                ) : (
+                    <div className="space-y-5">
+                        <div className="w-full h-44 rounded-2xl bg-[#FFFFEB] border-2 border-[#1A1A1A] relative overflow-hidden flex items-center justify-center">
+                            {previewUrl && (
+                                <img src={previewUrl} alt="Scanning document" className="w-full h-full object-contain p-2 opacity-60" />
+                            )}
+                            <div className="scan-beam absolute left-0 right-0 h-1 bg-[#0041CA] shadow-[0_0_12px_2px_#0041CA]" />
+                            <span className="absolute bottom-2 right-3 font-mono text-xs font-extrabold bg-white border border-[#1A1A1A] px-2 py-0.5 rounded-full">
+                                {progress}%
+                            </span>
+                        </div>
+
+                        <div className="space-y-3">
+                            {scanSteps.map((label, i) => {
+                                const num = i + 1;
+                                const done = step > num;
+                                const active = step === num;
+                                return (
+                                    <div key={i} className={`flex items-center gap-3 text-sm transition-opacity ${step >= num ? 'opacity-100' : 'opacity-35'}`}>
+                                        <div className={`w-6 h-6 rounded-full border border-[#1A1A1A] flex items-center justify-center shrink-0 text-xs font-bold ${
+                                            done ? 'bg-[#34D399] text-[#1A1A1A]' : active ? 'bg-[#FFA946] text-[#1A1A1A] animate-pulse' : 'bg-[#FFFFEB] text-[#8C8C80]'
+                                        }`}>
+                                            {done ? <ICONS.Check size={13} /> : num}
+                                        </div>
+                                        <span className="font-bold text-[#1A1A1A]">{label}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
+                )}
+
+                <div className="mt-5 pt-4 border-t border-[#E4E4D0] flex items-center justify-center gap-1.5 text-xs font-medium text-[#4A4A43]">
+                    <ICONS.Lock size={13} className="text-[#034F46]" />
+                    <span>{t.privacyNote}</span>
                 </div>
-            )}
+            </div>
         </div>
     );
 }
 
+// ═══════════════════════════════════════════════════════════════
+// STEP 1B: 3-STEP MANUAL INFO ENTRY (NAME/ADDRESS -> AGE/WORK -> DOCS)
+// ═══════════════════════════════════════════════════════════════
+const AGE_GROUPS = [
+    { id: 'under18', age: '15', hi: '18 से कम', en: 'Under 18' },
+    { id: '18to35', age: '25', hi: '18 - 35 साल', en: '18 - 35 Years' },
+    { id: '36to59', age: '45', hi: '36 - 59 साल', en: '36 - 59 Years' },
+    { id: '60plus', age: '65', hi: '60+ साल (वरिष्ठ)', en: '60+ Years (Senior)' },
+];
 
-// ═══════════════════════════════════════════════════════════════
-// STATE 3: EXTRACTED PROFILE VERIFICATION
-// ═══════════════════════════════════════════════════════════════
-function ProfileScreen({ lang, persona, onUnlock }) {
+const PROFESSIONS = [
+    { id: 'farmer', hi: 'किसान / खेती', en: 'Farmer / Agriculture' },
+    { id: 'worker', hi: 'मज़दूर / श्रमिक', en: 'Daily Wage Worker' },
+    { id: 'student', hi: 'छात्र / पढ़ाई', en: 'Student / Education' },
+    { id: 'business', hi: 'दुकान / व्यापार', en: 'Small Business / Shop' },
+    { id: 'homemaker', hi: 'गृहणी / महिला', en: 'Homemaker / Woman' },
+];
+
+const DOCUMENT_OPTIONS = [
+    { id: 'aadhaar', hi: 'आधार कार्ड', en: 'Aadhaar Card', tagText: 'Aadhaar' },
+    { id: 'janaadhaar', hi: 'जन आधार (राजस्थान)', en: 'Jan Aadhaar (Rajasthan)', tagText: 'Jan Aadhaar Rajasthan' },
+    { id: 'bpl', hi: 'राशन कार्ड / BPL', en: 'Ration Card / BPL', tagText: 'BPL Ration Card' },
+    { id: 'land', hi: 'ज़मीन / खसरा कागज़', en: 'Land / Khasra Paper', tagText: 'Khasra Farmer Land' },
+    { id: 'sc', hi: 'SC प्रमाण पत्र', en: 'SC Certificate', tagText: 'SC' },
+    { id: 'st', hi: 'ST प्रमाण पत्र', en: 'ST Certificate', tagText: 'ST' },
+    { id: 'obc', hi: 'OBC प्रमाण पत्र', en: 'OBC Certificate', tagText: 'OBC' },
+    { id: 'ews', hi: 'EWS प्रमाण पत्र', en: 'EWS Certificate', tagText: 'EWS' },
+    { id: 'widow', hi: 'विधवा / एकल नारी', en: 'Widow / Single Woman', tagText: 'Widow' },
+    { id: 'disabled', hi: 'दिव्यांग कार्ड', en: 'Divyang Card', tagText: 'Divyang Disabled' },
+];
+
+function ManualEntryScreen({ lang, onDone }) {
     const t = STRINGS[lang];
-    const p = PERSONAS[persona];
-    const [editing, setEditing] = useState(false);
-    const matchedSchemes = p.schemeIds.filter(id => SCHEMES_DB[id]);
+    const [subStep, setSubStep] = useState(1); // 1 | 2 | 3
+    const [name, setName] = useState('');
+    const [address, setAddress] = useState('');
+    const [ageGroup, setAgeGroup] = useState('');
+    const [profession, setProfession] = useState('');
+    const [selectedDocs, setSelectedDocs] = useState([]);
+    const [error, setError] = useState('');
 
-    const fields = [
-        { label: t.name, value: p.name[lang], icon: <ICONS.Users size={16} className="text-navy/50" /> },
-        { label: t.age, value: p.ageGender[lang], icon: '🎂' },
-        { label: t.category, value: p.category[lang], icon: '📋' },
-        { label: t.land, value: p.landOccupation[lang], icon: '🌾' },
-        { label: t.maskedId, value: p.maskedId, icon: <ICONS.ShieldCheck size={16} className="text-forest" /> },
-        { label: t.location, value: p.location[lang], icon: '📍' },
-    ];
+    const toggleDoc = (id) => {
+        setError('');
+        setSelectedDocs(prev =>
+            prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]
+        );
+    };
+
+    const handleNext = () => {
+        if (subStep === 1) {
+            if (!name.trim() || !address.trim()) {
+                setError(lang === 'hi' ? 'कृपया अपना नाम और पता दोनों भरें।' : 'Please enter both your name and address.');
+                return;
+            }
+            setError('');
+            setSubStep(2);
+            return;
+        }
+        if (subStep === 2) {
+            if (!ageGroup || !profession) {
+                setError(lang === 'hi' ? 'कृपया उम्र वर्ग और काम दोनों चुनें।' : 'Please choose both your age group and profession.');
+                return;
+            }
+            setError('');
+            setSubStep(3);
+            return;
+        }
+        if (subStep === 3) {
+            if (selectedDocs.length === 0) {
+                setError(lang === 'hi' ? 'कृपया कम से कम एक दस्तावेज़ चुनें।' : 'Please choose at least one document you have.');
+                return;
+            }
+            const ageObj = AGE_GROUPS.find(a => a.id === ageGroup);
+            const profObj = PROFESSIONS.find(p => p.id === profession);
+            const docObjs = DOCUMENT_OPTIONS.filter(d => selectedDocs.includes(d.id));
+
+            const profile = {
+                name: name.trim(),
+                age: ageObj?.age || '25',
+                location: address.trim(),
+                category: docObjs.map(d => d[lang]).join(' / '),
+                work: profObj ? profObj[lang] : '',
+            };
+            const docKeywords = docObjs.map(d => d.tagText).join(' ');
+            onDone(profile, docKeywords);
+        }
+    };
 
     return (
-        <div className="screen-enter min-h-screen flex flex-col items-center px-4 pt-20 pb-12">
-            <AnimatedCheckmark />
-
-            <h2 className="text-xl sm:text-2xl font-bold text-navy mb-1 text-center">{t.profileTitle}</h2>
-            <p className="text-navy/40 text-sm mb-6 text-center">{t.profileSubtext}</p>
-
-            {/* Profile Card */}
-            <div className="w-full max-w-md bg-white rounded-3xl shadow-xl shadow-navy/5 border border-navy/5 p-5 sm:p-6 mb-5 relative overflow-hidden">
-                {/* Tricolor accent strip */}
-                <div className="absolute top-0 left-0 right-0 h-1 flex">
-                    <div className="flex-1 bg-saffron" />
-                    <div className="flex-1 bg-white" />
-                    <div className="flex-1 bg-forest" />
+        <div className="step-enter min-h-[calc(100vh-64px)] px-4 py-8 max-w-md mx-auto flex flex-col items-center justify-center">
+            <div className="w-full bg-white rounded-3xl border-2 border-[#1A1A1A] shadow-[6px_6px_0_#1A1A1A] p-6 sm:p-8">
+                {/* Sub-step Indicator */}
+                <div className="flex items-center justify-between mb-5">
+                    <span className="font-mono text-xs font-bold bg-[#F0D7FF] border border-[#1A1A1A] px-3 py-1 rounded-full text-[#1A1A1A]">
+                        {lang === 'hi' ? `कदम ${subStep} / 3` : `Step ${subStep} of 3`}
+                    </span>
+                    {subStep > 1 && (
+                        <button
+                            type="button"
+                            onClick={() => { setError(''); setSubStep(s => s - 1); }}
+                            className="inline-flex items-center gap-1 text-xs font-bold text-[#0041CA] hover:underline"
+                        >
+                            <ICONS.ArrowLeft size={14} />
+                            <span>{t.back}</span>
+                        </button>
+                    )}
                 </div>
 
-                <div className="space-y-3.5 mt-1">
-                    {fields.map((f, i) => (
-                        <div key={i} className="flex items-center gap-3" style={{ animation: `cardPop 0.4s ease ${i * 0.07}s both` }}>
-                            <div className="w-9 h-9 rounded-xl bg-cream flex items-center justify-center text-base shrink-0">
-                                {typeof f.icon === 'string' ? f.icon : f.icon}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-[10px] text-navy/35 font-semibold uppercase tracking-wider">{f.label}</div>
-                                {editing ? (
-                                    <input className="w-full text-sm font-semibold text-navy border-b border-saffron/30 bg-transparent outline-none py-0.5 focus:border-saffron transition-colors" defaultValue={f.value} />
-                                ) : (
-                                    <div className="text-sm font-semibold text-navy">{f.value}</div>
-                                )}
+                {/* STEP 1: Name & Address */}
+                {subStep === 1 && (
+                    <div className="space-y-4">
+                        <h2 className="text-xl font-extrabold text-[#1A1A1A]">
+                            {lang === 'hi' ? 'अपना नाम और पता लिखें' : 'Enter Your Name & Address'}
+                        </h2>
+                        <div>
+                            <label className="block font-mono text-[11px] font-bold text-[#4A4A43] uppercase mb-1.5">
+                                {t.name}
+                            </label>
+                            <input
+                                type="text"
+                                value={name}
+                                onChange={(e) => { setError(''); setName(e.target.value); }}
+                                placeholder={lang === 'hi' ? 'जैसे: रामलाल मीणा' : 'e.g. Ramlal Meena'}
+                                className="w-full text-sm font-bold text-[#1A1A1A] placeholder:text-[#8C8C80] placeholder:font-normal bg-[#FFFFEB] border-2 border-[#1A1A1A] focus:border-[#0041CA] rounded-xl px-3.5 py-2.5 outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="block font-mono text-[11px] font-bold text-[#4A4A43] uppercase mb-1.5">
+                                {t.location}
+                            </label>
+                            <input
+                                type="text"
+                                value={address}
+                                onChange={(e) => { setError(''); setAddress(e.target.value); }}
+                                placeholder={lang === 'hi' ? 'जैसे: सिरोही, राजस्थान' : 'e.g. Sirohi, Rajasthan'}
+                                className="w-full text-sm font-bold text-[#1A1A1A] placeholder:text-[#8C8C80] placeholder:font-normal bg-[#FFFFEB] border-2 border-[#1A1A1A] focus:border-[#0041CA] rounded-xl px-3.5 py-2.5 outline-none"
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {/* STEP 2: Age Group & Profession */}
+                {subStep === 2 && (
+                    <div className="space-y-5">
+                        <div>
+                            <h2 className="text-lg font-extrabold text-[#1A1A1A] mb-2.5">
+                                {lang === 'hi' ? '1. अपनी उम्र चुनें' : '1. Choose Age Group'}
+                            </h2>
+                            <div className="grid grid-cols-2 gap-2.5">
+                                {AGE_GROUPS.map((ag) => (
+                                    <button
+                                        key={ag.id}
+                                        type="button"
+                                        onClick={() => { setError(''); setAgeGroup(ag.id); }}
+                                        className={`py-2.5 px-3 rounded-xl border-2 border-[#1A1A1A] text-xs font-extrabold transition-all text-center ${
+                                            ageGroup === ag.id
+                                                ? 'bg-[#0041CA] text-white shadow-[2px_2px_0_#1A1A1A]'
+                                                : 'bg-[#FFFFEB] hover:bg-[#F0D7FF] text-[#1A1A1A]'
+                                        }`}
+                                    >
+                                        {ag[lang]}
+                                    </button>
+                                ))}
                             </div>
                         </div>
-                    ))}
-                </div>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="w-full max-w-md space-y-3">
-                <button onClick={() => setEditing(!editing)}
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-navy/8 text-navy/60 font-semibold hover:border-saffron/40 hover:text-saffron transition-all duration-300 text-sm">
-                    <ICONS.Edit3 size={14} />
-                    {editing ? t.saveBtn : t.editBtn}
-                </button>
-                <button onClick={onUnlock}
-                    className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-saffron to-saffronDark text-white font-bold py-4 rounded-2xl shadow-xl shadow-saffron/25 hover:shadow-2xl hover:shadow-saffron/40 hover:-translate-y-0.5 transition-all duration-300 text-base relative overflow-hidden group">
-                    <span className="relative z-10">{t.unlockBtn} ({matchedSchemes.length} {t.schemesFound}) →</span>
-                    <div className="absolute inset-0 bg-white/10 translate-x-full group-hover:translate-x-0 transition-transform duration-500" />
-                </button>
-            </div>
-        </div>
-    );
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-// SCHEME CARD (Expandable)
-// ═══════════════════════════════════════════════════════════════
-function SchemeCard({ scheme, lang, index, onApply }) {
-    const t = STRINGS[lang];
-    const [expanded, setExpanded] = useState(false);
-    const s = scheme;
-    const name = lang === 'hi' ? s.nameHi : s.nameEn;
-    const benefit = s.benefitDisplay[lang];
-    const reason = s.eligibilityCriteria[lang];
-    const docs = s.requiredDocs[lang];
-
-    return (
-        <div className="bg-white rounded-2xl shadow-lg shadow-navy/5 border border-navy/5 overflow-hidden relative group hover:shadow-xl transition-all duration-300"
-             style={{ animation: `cardPop 0.5s ease ${index * 0.1}s both` }}>
-            {/* Top accent */}
-            <div className={`h-1.5 bg-gradient-to-r ${s.color}`} />
-
-            <div className="p-4 sm:p-5">
-                {/* Title row */}
-                <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <span className="text-2xl mt-0.5">{s.icon}</span>
-                        <div className="min-w-0">
-                            <h3 className="font-bold text-navy text-sm sm:text-base leading-tight">{name}</h3>
-                            <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                {s.badgeKeys.map(bk => (
-                                    <span key={bk} className="text-[9px] font-bold uppercase tracking-wider bg-navy/[0.04] text-navy/45 px-2 py-0.5 rounded-full">
-                                        {t.badges[bk]}
-                                    </span>
+                        <div>
+                            <h2 className="text-lg font-extrabold text-[#1A1A1A] mb-2.5">
+                                {lang === 'hi' ? '2. अपना काम चुनें' : '2. Choose Profession'}
+                            </h2>
+                            <div className="grid grid-cols-1 gap-2">
+                                {PROFESSIONS.map((prof) => (
+                                    <button
+                                        key={prof.id}
+                                        type="button"
+                                        onClick={() => { setError(''); setProfession(prof.id); }}
+                                        className={`py-2.5 px-4 rounded-xl border-2 border-[#1A1A1A] text-sm font-bold transition-all flex items-center justify-between ${
+                                            profession === prof.id
+                                                ? 'bg-[#0041CA] text-white shadow-[2px_2px_0_#1A1A1A]'
+                                                : 'bg-[#FFFFEB] hover:bg-[#F0D7FF] text-[#1A1A1A]'
+                                        }`}
+                                    >
+                                        <span>{prof[lang]}</span>
+                                        {profession === prof.id && <ICONS.Check size={16} />}
+                                    </button>
                                 ))}
                             </div>
                         </div>
                     </div>
-                    <div className={`shrink-0 ml-2 w-11 h-11 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center shadow-md`}>
-                        <span className="text-white text-[10px] font-black">{s.match}%</span>
-                    </div>
-                </div>
+                )}
 
-                {/* Benefit */}
-                <div className="bg-cream rounded-xl p-3 mb-3">
-                    <div className="text-[10px] text-navy/35 font-semibold uppercase tracking-wider mb-0.5">{t.benefit}</div>
-                    <div className="text-sm font-bold text-navy">{benefit}</div>
-                </div>
-
-                {/* Why you qualify */}
-                <div className="flex items-start gap-2 mb-3">
-                    <ICONS.CheckCircle2 size={14} className="text-forest shrink-0 mt-0.5" />
+                {/* STEP 3: Choose Documents You Have */}
+                {subStep === 3 && (
                     <div>
-                        <div className="text-[10px] text-navy/35 font-semibold uppercase tracking-wider mb-0.5">{t.whyQualify}</div>
-                        <p className="text-xs text-navy/60 leading-relaxed">{reason}</p>
-                    </div>
-                </div>
-
-                {/* Expandable Documents Checklist */}
-                <button onClick={() => setExpanded(!expanded)}
-                    className="w-full flex items-center justify-between py-2 px-3 bg-navy/[0.03] rounded-xl text-xs font-semibold text-navy/50 hover:bg-navy/[0.06] transition-colors mb-3">
-                    <span>{t.docsNeeded} ({docs.length})</span>
-                    {expanded ? <ICONS.ChevronUp size={14} /> : <ICONS.ChevronDown size={14} />}
-                </button>
-
-                {expanded && (
-                    <div className="mb-3 pl-1" style={{ animation: 'cardPop 0.3s ease both' }}>
-                        <p className="text-[10px] text-forest/60 mb-2 italic">{t.preChecked}</p>
-                        {docs.map((doc, di) => (
-                            <div key={di} className="flex items-center gap-2 py-1">
-                                <div className="w-4 h-4 rounded border-2 border-forest bg-forest/10 flex items-center justify-center">
-                                    <ICONS.CheckCircle2 size={10} className="text-forest" />
-                                </div>
-                                <span className="text-xs text-navy/60">{doc}</span>
-                            </div>
-                        ))}
+                        <h2 className="text-xl font-extrabold text-[#1A1A1A] mb-1">
+                            {lang === 'hi' ? 'आपके पास कौन से कागज़ हैं?' : 'Which documents do you have?'}
+                        </h2>
+                        <p className="text-xs text-[#4A4A43] mb-4">
+                            {lang === 'hi' ? 'जो कागज़ हैं उन्हें चुनें (एक या अधिक)' : 'Select all that apply'}
+                        </p>
+                        <div className="grid grid-cols-2 gap-2.5">
+                            {DOCUMENT_OPTIONS.map((doc) => {
+                                const active = selectedDocs.includes(doc.id);
+                                return (
+                                    <button
+                                        key={doc.id}
+                                        type="button"
+                                        onClick={() => toggleDoc(doc.id)}
+                                        className={`p-2.5 rounded-xl border-2 border-[#1A1A1A] text-xs font-bold transition-all flex items-center justify-between gap-1.5 text-left ${
+                                            active
+                                                ? 'bg-[#34D399] text-[#1A1A1A] shadow-[2px_2px_0_#1A1A1A]'
+                                                : 'bg-[#FFFFEB] hover:bg-[#F0D7FF] text-[#1A1A1A]'
+                                        }`}
+                                    >
+                                        <span>{doc[lang]}</span>
+                                        {active && <ICONS.Check size={14} className="shrink-0" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
 
-                {/* Action Buttons */}
-                <div className="flex gap-2">
-                    <button onClick={() => onApply(s)}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-navy text-white font-semibold text-xs hover:bg-navyLight transition-colors">
-                        <ICONS.ExternalLink size={12} />
-                        {t.applyDigilocker}
-                    </button>
-                    <button
-                        onClick={() => {
-                            const text = `${name}: ${benefit}`;
-                            window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-                        }}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl bg-green-500/10 text-green-600 hover:bg-green-500/20 transition-colors shrink-0"
-                        title={t.shareWhatsApp}>
-                        <ICONS.Share2 size={14} />
-                    </button>
-                </div>
+                {error && (
+                    <p role="alert" className="text-xs font-bold text-red-600 text-center mt-4">{error}</p>
+                )}
+
+                <button
+                    type="button"
+                    onClick={handleNext}
+                    className="btn-retro btn-blue w-full py-3.5 text-sm sm:text-base mt-6"
+                >
+                    <span>
+                        {subStep < 3
+                            ? (lang === 'hi' ? 'आगे बढ़ें' : 'Next')
+                            : t.seeSchemes}
+                    </span>
+                    <ICONS.ArrowRight size={18} />
+                </button>
             </div>
         </div>
     );
 }
 
-
 // ═══════════════════════════════════════════════════════════════
-// STATE 4: ENTITLEMENTS DASHBOARD ("Haq Dashboard")
+// STEP 2: SIMPLE PROFILE CONFIRMATION
 // ═══════════════════════════════════════════════════════════════
-function DashboardScreen({ lang, persona, onStartOver }) {
+function ProfileScreen({ lang, persona, ocrResult, profileEdits, onSaveProfile, onUnlock }) {
     const t = STRINGS[lang];
     const p = PERSONAS[persona];
-    const [showConfetti, setShowConfetti] = useState(true);
-    const [modalScheme, setModalScheme] = useState(null);
+    const [editing, setEditing] = useState(false);
+    const [showRawText, setShowRawText] = useState(false);
+    const [errorMsg, setErrorMsg] = useState('');
 
-    const matchedSchemes = useMemo(() => p.schemeIds.map(id => SCHEMES_DB[id]).filter(Boolean), [persona]);
+    const baseProfile = ocrResult ? ocrResult.profile : {
+        name: p.name[lang],
+        age: p.age,
+        location: p.location[lang],
+        category: p.category[lang],
+        work: p.work[lang],
+    };
+
+    const currentValues = useMemo(() => ({
+        name: (profileEdits?.name ?? baseProfile.name) || '',
+        age: (profileEdits?.age ?? baseProfile.age) || '',
+        location: (profileEdits?.location ?? baseProfile.location) || '',
+        category: (profileEdits?.category ?? baseProfile.category) || '',
+        work: (profileEdits?.work ?? baseProfile.work) || '',
+    }), [profileEdits, baseProfile.name, baseProfile.age, baseProfile.location, baseProfile.category, baseProfile.work]);
+
+    const [draft, setDraft] = useState(currentValues);
+
+    useEffect(() => {
+        setDraft(currentValues);
+    }, [currentValues]);
+
+    const getTrimmedDraft = () => ({
+        name: draft.name.trim(),
+        age: draft.age.trim(),
+        location: draft.location.trim(),
+        category: draft.category.trim(),
+        work: draft.work.trim(),
+    });
+
+    const hasMissingFields = !draft.name.trim() || !draft.age.trim() || !draft.location.trim() || !draft.category.trim() || !draft.work.trim();
+
+    const handleToggleEdit = () => {
+        if (editing) {
+            const trimmed = getTrimmedDraft();
+            if (!trimmed.name || !trimmed.age || !trimmed.location || !trimmed.category || !trimmed.work) {
+                setErrorMsg(lang === 'hi' ? 'कृपया सभी खाली जानकारी भरें।' : 'Please fill in all missing details.');
+                return;
+            }
+            setErrorMsg('');
+            onSaveProfile(trimmed);
+            setEditing(false);
+        } else {
+            setDraft(currentValues);
+            setErrorMsg('');
+            setEditing(true);
+        }
+    };
+
+    const handleContinue = () => {
+        const trimmed = getTrimmedDraft();
+        if (!trimmed.name || !trimmed.age || !trimmed.location || !trimmed.category || !trimmed.work) {
+            setErrorMsg(lang === 'hi' ? 'आगे बढ़ने से पहले कृपया सभी खाली जानकारी भरें।' : 'Please fill in all missing details before continuing.');
+            return;
+        }
+        setErrorMsg('');
+        onSaveProfile(trimmed);
+        setEditing(false);
+        onUnlock();
+    };
+
+    const quickChoices = {
+        category: lang === 'hi'
+            ? ['BPL / गरीब परिवार', 'SC / ST', 'OBC', 'सामान्य / EWS', 'विधवा / एकल महिला']
+            : ['BPL', 'SC / ST', 'OBC', 'General / EWS', 'Widow / Single Woman'],
+        work: lang === 'hi'
+            ? ['किसान / खेती', 'मज़दूर / श्रमिक', 'छात्र / पढ़ाई', 'दुकान / व्यापार', 'गृहणी']
+            : ['Farmer', 'Daily Wage Worker', 'Student', 'Small Business', 'Homemaker'],
+    };
+
+    const placeholders = {
+        name: lang === 'hi' ? 'अपना पूरा नाम लिखें' : 'Enter your full name',
+        age: lang === 'hi' ? 'अपनी उम्र लिखें (जैसे: 22)' : 'Enter your age (e.g. 22)',
+        location: lang === 'hi' ? 'गाँव / शहर व राज्य लिखें (जैसे: जयपुर, राजस्थान)' : 'Village / City & State (e.g. Jaipur, Rajasthan)',
+        category: lang === 'hi' ? 'अपना वर्ग चुनें या लिखें' : 'Select or type category',
+        work: lang === 'hi' ? 'अपना काम चुनें या लिखें' : 'Select or type work',
+    };
+
+    const rows = [
+        { key: 'name', label: t.name, value: currentValues.name, icon: <ICONS.User size={18} /> },
+        { key: 'age', label: t.age, value: currentValues.age, icon: <ICONS.UserHeart size={18} /> },
+        { key: 'location', label: t.location, value: currentValues.location, icon: <ICONS.MapPin size={18} /> },
+        { key: 'category', label: t.category, value: currentValues.category, icon: <ICONS.Clipboard size={18} /> },
+        { key: 'work', label: t.work, value: currentValues.work, icon: <ICONS.Wheat size={18} /> },
+    ];
+
+    return (
+        <div className="step-enter min-h-[calc(100vh-64px)] px-4 py-8 max-w-md mx-auto flex flex-col items-center justify-center">
+            <div className="w-full bg-white rounded-3xl border-2 border-[#1A1A1A] shadow-[6px_6px_0_#1A1A1A] p-6 sm:p-8 relative overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-1.5 flex">
+                    <div className="flex-1 bg-[#FFA946]" />
+                    <div className="flex-1 bg-white" />
+                    <div className="flex-1 bg-[#34D399]" />
+                </div>
+
+                <div className="flex items-start justify-between gap-2 mb-6 mt-1">
+                    <div>
+                        <h2 className="text-xl font-extrabold text-[#1A1A1A]">{t.profileHeader}</h2>
+                        <p className="text-xs text-[#4A4A43] mt-0.5">
+                            {hasMissingFields
+                                ? (lang === 'hi' ? 'जो जानकारी नहीं मिली, कृपया उसे भरें' : 'Please fill in the missing details below')
+                                : t.profileSub}
+                        </p>
+                    </div>
+                    <button type="button" onClick={handleToggleEdit}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-[#1A1A1A] bg-[#F6F6E0] hover:bg-[#FFA946] border border-[#1A1A1A] shadow-[2px_2px_0_#1A1A1A] px-3 py-1.5 rounded-full transition-colors shrink-0">
+                        <ICONS.Edit3 size={13} />
+                        <span>{editing ? t.save : t.edit}</span>
+                    </button>
+                </div>
+
+                <div className="space-y-3 mb-5">
+                    {rows.map((r) => {
+                        const isOriginallyMissing = !baseProfile[r.key]?.trim() && !profileEdits?.[r.key]?.trim();
+                        const showInput = editing || isOriginallyMissing || !r.value.trim();
+                        const isEmptyNow = !draft[r.key].trim();
+
+                        return (
+                            <div key={r.key} className={`p-3.5 rounded-2xl border ${isEmptyNow ? 'bg-[#FFF7E6] border-2 border-[#FFA946]' : 'bg-[#FFFFEB] border-[#1A1A1A]'}`}>
+                                <div className="flex items-center gap-3.5">
+                                    <div className="w-10 h-10 rounded-xl bg-white border border-[#1A1A1A] shadow-[1.5px_1.5px_0_#1A1A1A] flex items-center justify-center text-[#1A1A1A] shrink-0">
+                                        {r.icon}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="font-mono text-[10px] font-bold text-[#8C8C80] uppercase">{r.label}</span>
+                                            {ocrResult && !isOriginallyMissing && !showInput && (
+                                                <span className="text-[10px] font-bold text-[#034F46] bg-[#34D399]/30 border border-[#1A1A1A] rounded-full px-2 py-0.5">
+                                                    {lang === 'hi' ? 'फोटो से मिला' : 'From Photo'}
+                                                </span>
+                                            )}
+                                            {isEmptyNow && (
+                                                <span className="text-[10px] font-bold text-[#B45309]">
+                                                    {lang === 'hi' ? 'भरना ज़रूरी है' : 'Required'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {showInput ? (
+                                            <input
+                                                type={r.key === 'age' ? 'number' : 'text'}
+                                                inputMode={r.key === 'age' ? 'numeric' : undefined}
+                                                min={r.key === 'age' ? 1 : undefined}
+                                                max={r.key === 'age' ? 115 : undefined}
+                                                value={draft[r.key]}
+                                                placeholder={placeholders[r.key]}
+                                                onChange={(e) => {
+                                                    setErrorMsg('');
+                                                    setDraft(prev => ({ ...prev, [r.key]: e.target.value }));
+                                                }}
+                                                className="w-full text-sm font-bold text-[#1A1A1A] placeholder:text-[#8C8C80] placeholder:font-normal bg-white border-2 border-[#0041CA] rounded-lg px-2.5 py-1.5 mt-1 outline-none"
+                                            />
+                                        ) : (
+                                            <div className="text-sm font-bold text-[#1A1A1A] break-words mt-0.5">{r.value}</div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {showInput && quickChoices[r.key] && (
+                                    <div className="flex flex-wrap gap-1.5 mt-2.5 pl-13">
+                                        {quickChoices[r.key].map((opt) => (
+                                            <button
+                                                key={opt}
+                                                type="button"
+                                                onClick={() => {
+                                                    setErrorMsg('');
+                                                    setDraft(prev => ({ ...prev, [r.key]: opt }));
+                                                }}
+                                                className={`text-[11px] font-bold px-2.5 py-1 rounded-full border border-[#1A1A1A] transition-colors ${
+                                                    draft[r.key] === opt
+                                                        ? 'bg-[#0041CA] text-white'
+                                                        : 'bg-white hover:bg-[#F0D7FF] text-[#1A1A1A]'
+                                                }`}
+                                            >
+                                                {opt}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {ocrResult && (
+                    <div className="mb-4">
+                        {!ocrResult.hasReadableText && (
+                            <p className="text-xs font-bold text-amber-700 bg-[#FFF3D6] border border-[#1A1A1A] rounded-xl px-3 py-2 mb-2 text-center">
+                                {lang === 'hi' ? 'फोटो में साफ अक्षर नहीं मिले — कृपया नीचे अपनी जानकारी भरें।' : 'No clear text found in photo — please enter your details above.'}
+                            </p>
+                        )}
+                        {ocrResult.rawText && (
+                            <div className="text-center">
+                                <button type="button" onClick={() => setShowRawText(s => !s)}
+                                    className="text-[11px] font-mono font-bold text-[#0041CA] underline">
+                                    {showRawText
+                                        ? (lang === 'hi' ? 'पढ़ा गया टेक्स्ट छुपाएं' : 'Hide extracted OCR text')
+                                        : (lang === 'hi' ? 'फोटो से पढ़ा गया टेक्स्ट देखें' : 'View extracted OCR text')}
+                                </button>
+                                {showRawText && (
+                                    <pre className="mt-2 p-3 rounded-xl bg-[#FFFFEB] border border-[#1A1A1A] text-[11px] text-left text-[#4A4A43] whitespace-pre-wrap max-h-32 overflow-y-auto font-mono">
+                                        {ocrResult.rawText}
+                                    </pre>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {errorMsg && (
+                    <p role="alert" className="text-xs font-bold text-red-600 text-center mb-4">{errorMsg}</p>
+                )}
+
+                <button type="button" onClick={handleContinue} className="btn-retro btn-blue w-full py-4 text-sm sm:text-base">
+                    <span>{t.seeSchemes}</span>
+                    <ICONS.ArrowRight size={18} />
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STEP 3: CLEAN ENTITLEMENT RESULTS & ACTION MODAL
+// ═══════════════════════════════════════════════════════════════
+function getSchemeSubcategory(scheme) {
+    const tags = scheme.tags || [];
+    if (scheme.type === 'health' || tags.includes('health')) return 'health';
+    if (tags.some(t => ['student', 'school', 'youth', 'child', 'skill', 'sports', 'science', 'education'].includes(t))) return 'education';
+    if (tags.some(t => ['farmer', 'agriculture', 'dairy', 'worker', 'artisan', 'business', 'startup', 'senior', 'widow', 'bpl', 'shg'].includes(t))) return 'cash';
+    return 'essentials';
+}
+
+function DashboardScreen({ lang, persona, ocrResult, profileEdits, onStartOver }) {
+    const t = STRINGS[lang];
+    const p = PERSONAS[persona];
+    const [activeCategory, setActiveCategory] = useState('education');
+    const [visibleCount, setVisibleCount] = useState(10);
+    const [modalScheme, setModalScheme] = useState(null);
+    const closeBtnRef = useRef(null);
+
+    useEffect(() => {
+        if (!modalScheme) return undefined;
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') setModalScheme(null);
+        };
+        document.addEventListener('keydown', onKeyDown);
+        closeBtnRef.current?.focus();
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, [modalScheme]);
+
+    const matchedSchemes = useMemo(() => {
+        const ids = (ocrResult || profileEdits)
+            ? matchSchemesFromProfile(profileEdits || ocrResult?.profile || {}, ocrResult?.rawText || '')
+            : p.schemeIds;
+        return ids.map(id => SCHEMES_DB[id]).filter(Boolean);
+    }, [ocrResult, profileEdits, p.schemeIds]);
+
+    const categorized = useMemo(() => {
+        const groups = { education: [], cash: [], health: [], essentials: [] };
+        for (const s of matchedSchemes) {
+            groups[getSchemeSubcategory(s)].push(s);
+        }
+        return groups;
+    }, [matchedSchemes]);
+
+    const tabs = useMemo(() => [
+        { key: 'education', label: t.filterEducation, count: categorized.education.length },
+        { key: 'cash', label: t.filterCash, count: categorized.cash.length },
+        { key: 'health', label: t.filterHealth, count: categorized.health.length },
+        { key: 'essentials', label: t.filterEssentials, count: categorized.essentials.length },
+    ].filter(tab => tab.count > 0), [categorized, t.filterEducation, t.filterCash, t.filterHealth, t.filterEssentials]);
+
+    useEffect(() => {
+        if (tabs.length > 0 && !tabs.some(tab => tab.key === activeCategory)) {
+            setActiveCategory(tabs[0].key);
+            setVisibleCount(10);
+        }
+    }, [tabs, activeCategory]);
+
+    const currentCategorySchemes = useMemo(
+        () => categorized[activeCategory] || [],
+        [categorized, activeCategory]
+    );
+    const visibleSchemes = useMemo(
+        () => currentCategorySchemes.slice(0, visibleCount),
+        [currentCategorySchemes, visibleCount]
+    );
+    const remainingCount = Math.max(0, currentCategorySchemes.length - visibleSchemes.length);
 
     const totalAnnual = useMemo(() =>
         matchedSchemes.reduce((sum, s) => sum + s.benefitAmountAnnual, 0),
     [matchedSchemes]);
 
-    const animatedTotal = useCountUp(totalAnnual, 2000);
-    const monthlyMissing = Math.round(totalAnnual / 12);
-
-    useEffect(() => {
-        const timer = setTimeout(() => setShowConfetti(false), 4500);
-        return () => clearTimeout(timer);
-    }, []);
+    const animatedTotal = useCountUp(totalAnnual, 1000);
 
     return (
-        <div className="screen-enter min-h-screen px-4 pt-20 pb-12 relative">
-            <Confetti show={showConfetti} />
+        <div className="step-enter min-h-[calc(100vh-64px)] px-4 py-8 pb-16 max-w-3xl mx-auto">
+            {/* Hero Summary Banner */}
+            <div className="bg-white border-2 border-[#1A1A1A] shadow-[6px_6px_0_#1A1A1A] rounded-3xl p-6 sm:p-8 mb-6">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <span className="font-mono text-xs font-bold text-[#4A4A43] uppercase">{t.totalBenefit}</span>
+                    <span className="text-xs font-extrabold bg-[#34D399] text-[#1A1A1A] border border-[#1A1A1A] shadow-[1.5px_1.5px_0_#1A1A1A] px-3 py-1 rounded-full">
+                        {matchedSchemes.length} {t.schemesFound}
+                    </span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                    <span className="font-serif italic text-5xl sm:text-6xl text-[#1A1A1A] tracking-tight tabular-nums">
+                        ₹{animatedTotal.toLocaleString()}
+                    </span>
+                    <span className="text-sm font-bold text-[#8C8C80]">{t.perYear}</span>
+                </div>
+            </div>
 
-            <div className="max-w-2xl mx-auto">
-                {/* Celebration Banner */}
-                <div className="bg-gradient-to-br from-navy to-navyDark rounded-3xl p-5 sm:p-7 mb-6 relative overflow-hidden shadow-2xl shadow-navy/30"
-                     style={{ animation: 'cardPop 0.6s ease both' }}>
-                    {/* Decorative circles */}
-                    <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-saffron/10 blur-2xl" />
-                    <div className="absolute -bottom-10 -left-10 w-32 h-32 rounded-full bg-forest/10 blur-2xl" />
+            {/* 4 Subcategory Tabs (No "All" Tab, No Horizontal Scroll) */}
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2.5 mb-4">
+                {tabs.map(tab => (
+                    <button key={tab.key} onClick={() => { setActiveCategory(tab.key); setVisibleCount(10); }}
+                        className={`px-3.5 py-2 rounded-full text-xs font-bold border-2 border-[#1A1A1A] transition-all flex items-center justify-between sm:justify-start gap-1.5 ${
+                            activeCategory === tab.key
+                                ? 'bg-[#0041CA] text-white shadow-[2px_2px_0_#1A1A1A]'
+                                : 'bg-white text-[#1A1A1A] hover:bg-[#F6F6E0]'
+                        }`}>
+                        <span className="truncate">{tab.label}</span>
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold shrink-0 ${
+                            activeCategory === tab.key ? 'bg-white/20 text-white' : 'bg-[#F0D7FF] text-[#1A1A1A]'
+                        }`}>
+                            {tab.count}
+                        </span>
+                    </button>
+                ))}
+            </div>
 
-                    <div className="relative z-10">
-                        <div className="flex items-center gap-2 mb-2">
-                            <ICONS.Award size={18} className="text-saffron" />
-                            <span className="text-saffron text-xs font-bold uppercase tracking-wider">
-                                {matchedSchemes.length} {t.schemesFound}!
-                            </span>
-                        </div>
-                        <p className="text-white/60 text-xs mb-1">{t.totalEntitlement}</p>
-                        <div className="flex items-baseline gap-1 mb-3">
-                            <span className="text-3xl sm:text-4xl font-black text-white">₹{animatedTotal.toLocaleString()}</span>
-                            <span className="text-white/50 text-sm font-medium">{t.perYear}</span>
-                        </div>
-                        {totalAnnual > 0 && (
-                            <div className="bg-white/10 rounded-xl px-4 py-2.5 border border-white/10">
-                                <p className="text-saffronLight text-xs font-medium flex items-center gap-1.5">
-                                    <ICONS.AlertCircle size={13} />
-                                    {t.missingLine.replace('{amount}', monthlyMissing.toLocaleString())}
+            <div className="text-xs font-mono font-bold text-[#4A4A43] mb-4">
+                {t.showingOf} {visibleSchemes.length} / {currentCategorySchemes.length}
+            </div>
+
+            {/* Clean Scheme Cards Grid (10 per page) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                {visibleSchemes.map((scheme) => {
+                    const SchemeIcon = ICONS[scheme.iconKey] || ICONS.Clipboard;
+                    return (
+                        <div key={scheme.id} className="pr-card justify-between">
+                            <div>
+                                <div className="flex items-start gap-3 mb-3">
+                                    <div className="w-10 h-10 rounded-xl bg-[#F0D7FF] border border-[#1A1A1A] shadow-[1.5px_1.5px_0_#1A1A1A] text-[#1A1A1A] flex items-center justify-center shrink-0">
+                                        <SchemeIcon size={20} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <h3 className="font-extrabold text-[#1A1A1A] text-base leading-snug">
+                                            {lang === 'hi' ? scheme.nameHi : scheme.nameEn}
+                                        </h3>
+                                        <div className="font-serif italic text-lg text-[#0041CA] mt-0.5">
+                                            {scheme.benefitDisplay[lang]}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <p className="text-xs text-[#4A4A43] leading-relaxed mb-4 font-body">
+                                    {scheme.reason[lang]}
                                 </p>
                             </div>
-                        )}
-                    </div>
-                </div>
 
-                {/* Scheme Cards Grid */}
-                <div className="space-y-4 pb-6">
-                    {matchedSchemes.map((s, i) => (
-                        <SchemeCard key={s.id} scheme={s} lang={lang} index={i} onApply={setModalScheme} />
-                    ))}
-                </div>
-
-                {/* Start Over */}
-                <div className="text-center pb-8">
-                    <button onClick={onStartOver}
-                        className="inline-flex items-center gap-2 bg-white border-2 border-navy/8 text-navy font-semibold py-3 px-8 rounded-2xl hover:border-saffron/40 hover:text-saffron transition-all duration-300">
-                        <ICONS.Home size={16} />
-                        {t.startOver}
-                    </button>
-                </div>
-            </div>
-
-            {/* DigiLocker Modal */}
-            <Modal open={!!modalScheme} onClose={() => setModalScheme(null)}>
-                {modalScheme && (
-                    <div className="text-center pt-2">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-navy to-navyLight flex items-center justify-center mx-auto mb-4 shadow-lg">
-                            <ICONS.ExternalLink size={24} className="text-white" />
-                        </div>
-                        <h3 className="font-bold text-navy text-lg mb-2">
-                            {lang === 'hi' ? modalScheme.nameHi : modalScheme.nameEn}
-                        </h3>
-                        <p className="text-navy/50 text-sm mb-4">{t.digilockerModal}</p>
-                        <div className="bg-cream rounded-xl p-4 mb-4 text-left">
-                            <p className="text-[10px] text-navy/35 font-semibold uppercase tracking-wider mb-2">{t.docsNeeded}</p>
-                            {modalScheme.requiredDocs[lang].map((doc, i) => (
-                                <div key={i} className="flex items-center gap-2 py-1">
-                                    <ICONS.CheckCircle2 size={12} className="text-forest" />
-                                    <span className="text-xs text-navy/60">{doc}</span>
-                                </div>
-                            ))}
-                        </div>
-                        <a href={modalScheme.directApplyUrl} target="_blank" rel="noopener noreferrer"
-                           className="inline-flex items-center gap-2 bg-gradient-to-r from-saffron to-saffronDark text-white font-bold py-3 px-8 rounded-2xl shadow-lg hover:shadow-xl transition-all text-sm">
-                            <ICONS.ExternalLink size={14} />
-                            {lang === 'hi' ? 'आधिकारिक पोर्टल खोलें' : 'Open Official Portal'}
-                        </a>
-                    </div>
-                )}
-            </Modal>
-        </div>
-    );
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-// STATE 5: VOICE MODE ("Setu Saathi")
-// ═══════════════════════════════════════════════════════════════
-function VoiceScreen({ lang, onDone }) {
-    const t = STRINGS[lang];
-    const [qaIndex, setQaIndex] = useState(0);
-    const [messages, setMessages] = useState([]);
-    const [listening, setListening] = useState(false);
-    const [showWave, setShowWave] = useState(false);
-    const chatRef = useRef(null);
-
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setMessages([{ sender: 'bot', text: VOICE_QA[0].q[lang], id: Date.now() }]);
-        }, 600);
-        return () => clearTimeout(timer);
-    }, []);
-
-    useEffect(() => {
-        if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
-    }, [messages]);
-
-    const handleMicClick = () => {
-        if (listening) return;
-        const currentQA = VOICE_QA[qaIndex];
-        if (!currentQA || !currentQA.a) return;
-
-        setListening(true);
-        setShowWave(true);
-
-        setTimeout(() => {
-            setListening(false);
-            setShowWave(false);
-            setMessages(prev => [...prev, { sender: 'user', text: currentQA.a[lang], id: Date.now() }]);
-
-            const nextIndex = qaIndex + 1;
-            setQaIndex(nextIndex);
-
-            setTimeout(() => {
-                if (nextIndex < VOICE_QA.length) {
-                    setMessages(prev => [...prev, { sender: 'bot', text: VOICE_QA[nextIndex].q[lang], id: Date.now() + 1 }]);
-                    if (!VOICE_QA[nextIndex].a) {
-                        // Final bot message — show button to dashboard
-                    }
-                }
-            }, 500);
-        }, 1800);
-    };
-
-    const isConversationDone = qaIndex >= VOICE_QA.length - 1 && messages.length >= VOICE_QA.length + (VOICE_QA.length - 1);
-
-    return (
-        <div className="screen-enter min-h-screen flex flex-col relative">
-            {/* Header */}
-            <div className="text-center pt-20 pb-3 px-4">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-saffron to-saffronDark flex items-center justify-center shadow-md">
-                        <ICONS.Mic size={14} className="text-white" />
-                    </div>
-                    <h2 className="text-xl font-bold text-navy">{t.voiceTitle}</h2>
-                </div>
-                <p className="text-navy/40 text-xs">{t.voiceSubtext}</p>
-            </div>
-
-            {/* Chat area */}
-            <div ref={chatRef} className="flex-1 overflow-y-auto px-4 pb-44 scrollbar-hide">
-                <div className="max-w-md mx-auto space-y-3 pt-2">
-                    {messages.map((msg) => (
-                        <div key={msg.id}
-                            className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                            style={{ animation: 'cardPop 0.3s ease both' }}>
-                            <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm ${
-                                msg.sender === 'user'
-                                    ? 'bg-gradient-to-r from-saffron to-saffronDark text-white rounded-br-md shadow-md'
-                                    : 'bg-white border border-navy/8 text-navy shadow-sm rounded-bl-md'
-                            }`}>
-                                {msg.sender === 'bot' && (
-                                    <span className="text-[10px] font-bold text-saffron block mb-1">🤖 Setu Saathi</span>
-                                )}
-                                {msg.text}
-                            </div>
-                        </div>
-                    ))}
-
-                    {/* Typing indicator */}
-                    {listening && (
-                        <div className="flex justify-end" style={{ animation: 'cardPop 0.3s ease both' }}>
-                            <div className="bg-saffron/20 rounded-2xl rounded-br-md px-4 py-3">
-                                <div className="flex gap-1">
-                                    {[0, 1, 2].map(j => (
-                                        <div key={j} className="w-2 h-2 bg-saffron/60 rounded-full"
-                                            style={{ animation: `typingDot 1s ease ${j * 0.15}s infinite` }} />
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Go to dashboard button */}
-                    {isConversationDone && (
-                        <div className="flex justify-center pt-4" style={{ animation: 'cardPop 0.5s ease both' }}>
-                            <button onClick={onDone}
-                                className="flex items-center gap-2 bg-gradient-to-r from-forest to-emerald-600 text-white font-bold py-3 px-6 rounded-2xl shadow-lg hover:shadow-xl transition-all text-sm">
-                                <ICONS.ArrowRight size={16} />
-                                {t.showResults}
+                            <button onClick={() => setModalScheme(scheme)}
+                                className="btn-retro btn-white w-full py-2.5 text-xs">
+                                <span>{t.applyBtn}</span>
+                                <ICONS.ArrowRight size={14} />
                             </button>
                         </div>
-                    )}
+                    );
+                })}
+            </div>
+
+            {/* View More Button (+10 per click) */}
+            {remainingCount > 0 && (
+                <div className="text-center mb-8">
+                    <button type="button" onClick={() => setVisibleCount(c => c + 10)}
+                        className="btn-retro btn-white text-sm py-3 px-7">
+                        <span>{t.viewMore} (+{Math.min(10, remainingCount)})</span>
+                    </button>
                 </div>
-            </div>
+            )}
 
-            {/* Mic button area */}
-            <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-cream via-cream to-transparent pt-10 pb-8 flex flex-col items-center z-30">
-                {/* Waveform */}
-                {showWave && (
-                    <div className="flex items-center justify-center gap-0.5 mb-4 h-8">
-                        {Array.from({ length: 24 }, (_, i) => (
-                            <div key={i} className="w-[3px] bg-saffron rounded-full"
-                                style={{
-                                    height: '6px',
-                                    animation: `wave 0.7s ease ${i * 0.04}s infinite`,
-                                    maxHeight: '32px',
-                                }} />
-                        ))}
-                    </div>
-                )}
-
-                <button onClick={handleMicClick}
-                    disabled={listening || (qaIndex >= VOICE_QA.length - 1 && !VOICE_QA[qaIndex]?.a)}
-                    className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 shadow-xl ${
-                        listening
-                            ? 'bg-red-500 text-white shadow-red-500/30'
-                            : qaIndex >= VOICE_QA.length
-                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
-                                : 'bg-gradient-to-br from-saffron to-saffronDark text-white shadow-saffron/30 hover:scale-110 active:scale-95'
-                    }`}
-                    style={listening ? { animation: 'micPulse 1s ease infinite' } : {}}>
-                    <ICONS.Mic size={24} />
+            {/* Start New Search */}
+            <div className="text-center">
+                <button onClick={onStartOver} className="btn-retro btn-lav text-sm py-3 px-7">
+                    <ICONS.Home size={16} />
+                    <span>{t.startNew}</span>
                 </button>
-                <p className="text-[11px] text-navy/35 mt-2 font-medium">
-                    {listening
-                        ? (lang === 'hi' ? '🎙️ सुन रहे हैं...' : '🎙️ Listening...')
-                        : (lang === 'hi' ? 'माइक दबाकर बोलें' : 'Press mic to speak')}
-                </p>
             </div>
+
+            {/* Focused Application Modal (portaled to body so page transform never shifts fixed centering) */}
+            {modalScheme && createPortal(
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
+                    <div className="absolute inset-0 bg-[#1A1A1A]/60 backdrop-blur-sm" onClick={() => setModalScheme(null)} />
+                    <div className="relative bg-[#FFFFEB] border-2 border-[#1A1A1A] rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 sm:p-7 shadow-[7px_7px_0_#1A1A1A] modal-enter z-10" role="dialog" aria-modal="true">
+                        <button ref={closeBtnRef} onClick={() => setModalScheme(null)} aria-label="Close"
+                            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white border-2 border-[#1A1A1A] shadow-[2px_2px_0_#1A1A1A] hover:bg-[#FFA946] flex items-center justify-center text-[#1A1A1A]">
+                            <ICONS.X size={15} />
+                        </button>
+
+                        <h3 className="font-extrabold text-lg text-[#1A1A1A] pr-8 mb-1">
+                            {lang === 'hi' ? modalScheme.nameHi : modalScheme.nameEn}
+                        </h3>
+                        <div className="font-serif italic text-xl text-[#0041CA] mb-5">
+                            {modalScheme.benefitDisplay[lang]}
+                        </div>
+
+                        <div className="bg-white border-2 border-[#1A1A1A] shadow-[3px_3px_0_#1A1A1A] rounded-2xl p-4 mb-5">
+                            <p className="font-mono text-[11px] font-bold text-[#8C8C80] uppercase mb-2.5">{t.docsNeeded}</p>
+                            <div className="space-y-2">
+                                {modalScheme.docs[lang].map((doc, i) => (
+                                    <div key={i} className="flex items-center gap-2 text-sm font-bold text-[#1A1A1A]">
+                                        <span className="w-5 h-5 rounded-full bg-[#34D399] border border-[#1A1A1A] text-[#1A1A1A] flex items-center justify-center shrink-0">
+                                            <ICONS.Check size={12} />
+                                        </span>
+                                        <span>{doc}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2.5">
+                            <a href={modalScheme.url} target="_blank" rel="noopener noreferrer"
+                                className="btn-retro btn-blue w-full py-3.5 text-sm">
+                                <span>{t.openPortal}</span>
+                                <ICONS.ExternalLink size={15} />
+                            </a>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const name = lang === 'hi' ? modalScheme.nameHi : modalScheme.nameEn;
+                                    const intro = lang === 'hi'
+                                        ? `योजना की जानकारी — ${name}: ${modalScheme.benefitDisplay.hi}\nआवेदन पोर्टल: ${modalScheme.url}`
+                                        : `Scheme Info — ${name}: ${modalScheme.benefitDisplay.en}\nOfficial Portal: ${modalScheme.url}`;
+                                    window.open(`https://wa.me/?text=${encodeURIComponent(intro)}`, '_blank');
+                                }}
+                                className="btn-retro btn-white w-full py-3 text-sm text-[#034F46]">
+                                <ICONS.Share2 size={15} />
+                                <span>{t.shareWhatsApp}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
         </div>
     );
 }
 
-
 // ═══════════════════════════════════════════════════════════════
-// APP (State Machine Router)
+// APP ROUTER (STEP-BY-STEP FLOW)
 // ═══════════════════════════════════════════════════════════════
 function App() {
-    const [screen, setScreen] = useState('landing'); // landing | scan | profile | dashboard | voice
-    const [lang, setLang] = useState('hi');
+    const [screen, setScreen] = useState('landing'); // landing | scan | voice | profile | dashboard
+    const [lang, setLang] = useState(() => {
+        try {
+            const saved = localStorage.getItem('yojanasetu_lang');
+            return saved === 'en' || saved === 'hi' ? saved : 'hi';
+        } catch {
+            return 'hi';
+        }
+    });
     const [persona, setPersona] = useState('farmer');
-    const [animKey, setAnimKey] = useState(0);
+    const [entryMode, setEntryMode] = useState('scan'); // scan | manual
+    const [ocrResult, setOcrResult] = useState(null);
+    const [profileEdits, setProfileEdits] = useState(null);
 
-    const navigate = useCallback((target, newPersona) => {
-        if (newPersona) setPersona(newPersona);
-        setAnimKey(k => k + 1);
-        setTimeout(() => setScreen(target), 40);
-    }, []);
+    useEffect(() => {
+        document.documentElement.lang = lang;
+        try {
+            localStorage.setItem('yojanasetu_lang', lang);
+        } catch (e) {
+            void e;
+        }
+    }, [lang]);
 
-    const showBack = screen !== 'landing';
+    const stepMap = {
+        landing: 0,
+        scan: 1,
+        voice: 1,
+        profile: 2,
+        dashboard: 3,
+    };
+
     const handleBack = useCallback(() => {
         const backMap = {
             scan: 'landing',
-            profile: 'landing',
-            dashboard: 'profile',
             voice: 'landing',
+            profile: 'landing',
+            dashboard: entryMode === 'manual' ? 'voice' : 'profile',
         };
-        navigate(backMap[screen] || 'landing');
-    }, [screen, navigate]);
+        setScreen(backMap[screen] || 'landing');
+    }, [screen, entryMode]);
 
     return (
-        <div className="min-h-screen bg-cream relative overflow-x-hidden">
-            <Navbar lang={lang} setLang={setLang} showBack={showBack} onBack={handleBack} />
+        <div className="min-h-screen bg-[#FFFFEB] text-[#1A1A1A]">
+            <Header
+                lang={lang}
+                setLang={setLang}
+                stepNumber={stepMap[screen]}
+                onBack={handleBack}
+                onHome={() => setScreen('landing')}
+            />
 
-            <div key={animKey}>
+            <main>
                 {screen === 'landing' && (
                     <LandingScreen
                         lang={lang}
-                        onScan={() => navigate('scan')}
-                        onVoice={() => navigate('voice')}
-                        onDemo={(key) => { setPersona(key); navigate('scan', key); }}
+                        onScan={() => { setEntryMode('scan'); setOcrResult(null); setProfileEdits(null); setScreen('scan'); }}
+                        onVoice={() => { setEntryMode('manual'); setOcrResult(null); setProfileEdits(null); setScreen('voice'); }}
                     />
                 )}
                 {screen === 'scan' && (
                     <ScanScreen
                         lang={lang}
-                        onDone={() => navigate('profile')}
+                        onDone={(parsed) => {
+                            setOcrResult(parsed || null);
+                            setProfileEdits(null);
+                            setScreen('profile');
+                        }}
+                    />
+                )}
+                {screen === 'voice' && (
+                    <ManualEntryScreen
+                        lang={lang}
+                        onDone={(manualProfile, docKeywords) => {
+                            setOcrResult({ rawText: docKeywords || '', hasReadableText: true, profile: manualProfile, schemeIds: [] });
+                            setProfileEdits(manualProfile);
+                            setScreen('dashboard');
+                        }}
                     />
                 )}
                 {screen === 'profile' && (
                     <ProfileScreen
                         lang={lang}
                         persona={persona}
-                        onUnlock={() => navigate('dashboard')}
+                        ocrResult={ocrResult}
+                        profileEdits={profileEdits}
+                        onSaveProfile={setProfileEdits}
+                        onUnlock={() => setScreen('dashboard')}
                     />
                 )}
                 {screen === 'dashboard' && (
                     <DashboardScreen
                         lang={lang}
                         persona={persona}
-                        onStartOver={() => navigate('landing')}
+                        ocrResult={ocrResult}
+                        profileEdits={profileEdits}
+                        onStartOver={() => { setOcrResult(null); setProfileEdits(null); setScreen('landing'); }}
                     />
                 )}
-                {screen === 'voice' && (
-                    <VoiceScreen
-                        lang={lang}
-                        onDone={() => navigate('dashboard', 'farmer')}
-                    />
-                )}
-            </div>
-
-            {/* Floating Setu Saathi button (visible on non-voice screens) */}
-            {screen !== 'voice' && (
-                <FloatingVoiceBtn onClick={() => navigate('voice')} lang={lang} />
-            )}
+            </main>
         </div>
     );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+export default App;

@@ -1,76 +1,18 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="hi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YojanaSetu — एक फोटो, एक मिनट, आपके सारे सरकारी हक</title>
-    <meta name="description" content="Scan one document and discover every government scheme you qualify for in 60 seconds. 100% client-side privacy. YojanaSetu — Scan. Discover. Empower.">
-
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        navy: '#1E3A5F',
-                        navyLight: '#2A4F7F',
-                        navyDark: '#152B47',
-                        saffron: '#FF9933',
-                        saffronDark: '#E6851F',
-                        saffronLight: '#FFB366',
-                        forest: '#15803D',
-                        forestLight: '#22C55E',
-                        cream: '#F8FAFC',
-                        creamWarm: '#FFF8F0',
-                        ashoka: '#046A38',
-                    },
-                    fontFamily: {
-                        hindi: ['Noto Sans Devanagari', 'sans-serif'],
-                        body: ['Inter', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
-
-    <!-- React + ReactDOM -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-
-    <!-- Custom Styles -->
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffffeb" />
+    <meta name="description" content="YojanaSetu — Simple, voice-first welfare scheme discovery for every citizen." />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230041CA'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='%23FFFFFF' font-family='sans-serif' font-weight='800' font-size='18'%3E%E0%A4%AF%3C/text%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <title>YojanaSetu — सरकारी योजनाएं आसानी से खोजें</title>
+  </head>
+  <body class="bg-[#ffffeb] text-[#1a1a1a] antialiased selection:bg-[#ffa946] selection:text-[#1a1a1a]">
     <div id="root"></div>
-
-    <!-- App Logic — Fetches app.jsx and compiles via Babel at runtime -->
-    <script>
-        fetch('app.jsx')
-            .then(r => r.text())
-            .then(jsx => {
-                const compiled = Babel.transform(jsx, { presets: ['react'] }).code;
-                const script = document.createElement('script');
-                script.textContent = compiled;
-                document.body.appendChild(script);
-            })
-            .catch(err => {
-                console.error('Failed to load app.jsx:', err);
-                document.getElementById('root').innerHTML =
-                    '<div style="padding:2rem;text-align:center;color:#1E3A5F">' +
-                    '<h2>Please serve via HTTP</h2>' +
-                    '<p style="margin-top:0.5rem;color:#666">Run <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px">npx serve .</code> in this folder, then open <code>http://localhost:3000</code></p>' +
-                    '</div>';
-            });
-    </script>
-</body>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
